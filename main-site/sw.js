@@ -1,12 +1,12 @@
-const CACHE = "template-offline-v1";
+const CACHE = "snek-v1";
 
 const ASSETS = [
   "/",
   "/index.html",
   "/style.css",
   "/script.js",
-  "/templateicon1-192.png",
-  "/templateicon1-512.png",
+  "/XSG-192.png",
+  "/XSG-512.png",
   "/favicon.ico",
   "/manifest.json"
 ];

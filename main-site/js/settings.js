@@ -17,6 +17,8 @@ const DEFAULTS = {
   start_level: 0,
   game_seconds: 0,
   fruit_seconds: 0,
+  // Slither's drawing: "high" or "low".
+  graphics: "high",
 };
 
 let current = null;
@@ -31,6 +33,7 @@ function load() {
   const out = { ...DEFAULTS, ...cleanSettings(saved) };
   if (typeof saved.name === "string" && saved.name.trim()) out.name = saved.name.trim();
   out.auto_submit = saved.auto_submit === true;
+  out.graphics = saved.graphics === "low" ? "low" : "high";
   // Adding games automatically needs a name to add them under.
   if (!out.name) out.auto_submit = false;
   return out;
@@ -95,6 +98,7 @@ function render() {
   press("#difficultyToggle [data-difficulty]", (el) => el.dataset.difficulty === s.difficulty);
   press("#gameLimitToggle [data-game]", (el) => Number(el.dataset.game) === s.game_seconds);
   press("#fruitLimitToggle [data-fruit]", (el) => Number(el.dataset.fruit) === s.fruit_seconds);
+  press("#graphicsToggle [data-graphics]", (el) => el.dataset.graphics === s.graphics);
   $("scoringNote").textContent = scoringNote(s);
 }
 
@@ -155,6 +159,10 @@ export function initSettings() {
   $("gameLimitToggle").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-game]");
     if (btn) saveSettings({ game_seconds: Number(btn.dataset.game) });
+  });
+  $("graphicsToggle").addEventListener("click", (e) => {
+    const btn = e.target.closest("[data-graphics]");
+    if (btn) saveSettings({ graphics: btn.dataset.graphics === "low" ? "low" : "high" });
   });
   $("fruitLimitToggle").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-fruit]");

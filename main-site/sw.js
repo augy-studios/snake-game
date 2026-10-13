@@ -35,7 +35,7 @@
 // 5. PeerJS, for party games, comes from cdnjs and is never cached:
 //    pairing needs the network anyway (STUN-p2p-spec.md).
 
-const VERSION = "uwusnek-v2";
+const VERSION = "uwusnek-v3";
 
 const SHELL = `uwusnek-shell-${VERSION}`;
 
@@ -69,6 +69,11 @@ const PRECACHE = [
   "/js/rules.js",
   "/js/seed.js",
   "/js/settings.js",
+  "/js/slither-game.js",
+  "/js/slither-render.js",
+  "/js/slither-replay.js",
+  "/js/slither-rules.js",
+  "/js/slither-skins.js",
   "/js/theme.js",
   "/js/ui.js",
   "/js/update-bar.js",

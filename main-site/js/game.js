@@ -33,8 +33,13 @@ import { describeSettings, gameSettings, getSettings, openSettings, saveSettings
 import { escapeHtml, hydrateIcons, store } from "./ui.js";
 
 // The editions on the pre-game screen. The picker shows once there is more
-// than one; each id is what the Play button starts.
-export const EDITIONS = [{ id: "classic", name: "Classic", about: "The board wraps round at every edge." }];
+// than one; each id is what the Play button starts. The one picked last is
+// remembered in this browser.
+export const EDITIONS = [
+  { id: "classic", name: "Classic", about: "The board wraps round at every edge." },
+  { id: "slither", name: "Slither", about: "A big world of glowing dots. Anyone nearby can join any time." },
+];
+const EDITION_KEY = "uwusnek.edition";
 
 const BEST_KEY = "uwusnek.best";
 const SPEED_KEY = "uwusnek.replaySpeed";
@@ -588,6 +593,7 @@ export function initGame(hooks = {}) {
      not the browser, carries the mark, so the next game is clean. */
 
   function toggleAutoplay() {
+    if (document.body.classList.contains("slither")) return;
     const s = session;
     if (s?.kind === "local" && !s.party && !s.state.over) {
       s.wantAutoplay = !(s.wantAutoplay ?? s.autoplay);
@@ -603,6 +609,7 @@ export function initGame(hooks = {}) {
   let taps = 0;
   let lastTapAt = 0;
   function onBrandTap(e) {
+    if (document.body.classList.contains("slither")) return;
     if (e.pointerType !== "touch") return;
     e.preventDefault();
     const now = performance.now();
@@ -650,6 +657,7 @@ export function initGame(hooks = {}) {
   // the page; touch-action in style.css keeps the browser's gestures out.
   let gesture = null;
   function onPointerDown(e) {
+    if (document.body.classList.contains("slither")) return;
     if (!session || session.kind === "replay") return;
     if (watching()) {
       aim = cellAt(e.clientX, e.clientY);
@@ -663,6 +671,7 @@ export function initGame(hooks = {}) {
   }
 
   function onPointerMove(e) {
+    if (document.body.classList.contains("slither")) return;
     if (watching()) {
       const next = cellAt(e.clientX, e.clientY);
       if (next?.x !== aim?.x || next?.y !== aim?.y) {
@@ -682,6 +691,7 @@ export function initGame(hooks = {}) {
   }
 
   function onPointerUp(e) {
+    if (document.body.classList.contains("slither")) return;
     if (watching()) {
       const cell = cellAt(e.clientX, e.clientY);
       if (cell) placeTool(cell.x, cell.y);
@@ -786,7 +796,7 @@ export function initGame(hooks = {}) {
 
   /* ---- The pre-game screen ---- */
 
-  function showStart({ message = "" } = {}) {
+  function showStart({ message = "", edition: pick = null, seed = "" } = {}) {
     stopReplayView();
     if (session?.kind === "local" && !session.state.over && !session.party) session.paused = true;
     session = null;
@@ -799,7 +809,9 @@ export function initGame(hooks = {}) {
     const s = getSettings();
     $("startLevel").value = String(s.start_level);
     syncLevelChips();
-    $("startSummary").textContent = describeSettings(s);
+    if (pick) setEdition(pick);
+    else setEdition(edition);
+    if (seed) $("startSeed").value = seed;
     $("startMsg").textContent = message;
     $("startOverlay").classList.remove("hidden");
     queueLayout();
@@ -807,14 +819,38 @@ export function initGame(hooks = {}) {
     $("playBtn").focus();
   }
 
+  let edition = EDITIONS.some((e) => e.id === store.get(EDITION_KEY)) ? store.get(EDITION_KEY) : "classic";
+
   function renderEditions() {
     const list = $("editionList");
     list.hidden = EDITIONS.length < 2;
     list.innerHTML = EDITIONS.map(
-      (e, i) =>
-        `<button class="edition${i === 0 ? " active" : ""}" type="button" role="radio" aria-checked="${i === 0}" data-edition="${e.id}">` +
+      (e) =>
+        `<button class="edition" type="button" role="radio" aria-checked="false" data-edition="${e.id}">` +
         `<span class="edition-name">${escapeHtml(e.name)}</span><span class="edition-about">${escapeHtml(e.about)}</span></button>`
     ).join("");
+    setEdition(edition, { save: false });
+  }
+
+  // The pre-game screen shows what the picked edition takes: a start level
+  // for Classic, a skin for Slither.
+  function setEdition(id, { save = true } = {}) {
+    edition = EDITIONS.some((e) => e.id === id) ? id : "classic";
+    if (save) store.set(EDITION_KEY, edition);
+    document.querySelectorAll("#editionList [data-edition]").forEach((el) => {
+      const on = el.dataset.edition === edition;
+      el.classList.toggle("active", on);
+      el.setAttribute("aria-checked", String(on));
+    });
+    const slither = edition === "slither";
+    $("levelBlock").hidden = slither;
+    $("skinRow").hidden = !slither;
+    $("startTitle").textContent = slither ? "Slither" : "Snake Game";
+    $("startSummary").textContent = slither
+      ? `${getSettings().graphics === "low" ? "Low" : "High"} quality graphics`
+      : describeSettings();
+    $("classicKeys").hidden = slither;
+    $("slitherKeys").hidden = !slither;
   }
 
   function syncLevelChips() {
@@ -828,6 +864,13 @@ export function initGame(hooks = {}) {
 
   function onStartSubmit(event) {
     event.preventDefault();
+    if (edition === "slither") {
+      const seed = cleanSeed($("startSeed").value);
+      $("startSeed").value = "";
+      $("startOverlay").classList.add("hidden");
+      hooks.startSlither?.({ seed: seed || makeSeed() });
+      return;
+    }
     const raw = $("startLevel").value.trim();
     const level = raw === "" ? 0 : Number(raw);
     if (!Number.isInteger(level) || level < 0 || level > MAX_START_LEVEL) {
@@ -1025,6 +1068,7 @@ export function initGame(hooks = {}) {
         : `Shared replay, not from the leaderboard. ${replay.players.join(", ")}.`
       : "";
     $("replayNote").hidden = !shared;
+    seek.min = "0";
     seek.max = String(player.ticks);
     const last = Math.max(1, player.ticks);
     $("replayMarks").innerHTML =
@@ -1206,6 +1250,7 @@ export function initGame(hooks = {}) {
   /* ---- Keys ---- */
 
   function onKeyDown(e) {
+    if (document.body.classList.contains("slither")) return;
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
     // A window is open: Esc that closed it closes only that.
     if (e.defaultPrevented || document.body.classList.contains("modal-open")) return;
@@ -1434,15 +1479,9 @@ export function initGame(hooks = {}) {
   $("startSettingsBtn").addEventListener("click", openSettings);
   $("editionList").addEventListener("click", (e) => {
     const card = e.target.closest("[data-edition]");
-    if (!card) return;
-    document.querySelectorAll("#editionList [data-edition]").forEach((el) => {
-      el.classList.toggle("active", el === card);
-      el.setAttribute("aria-checked", String(el === card));
-    });
+    if (card) setEdition(card.dataset.edition);
   });
-  document.addEventListener("uwusnek:settings", () => {
-    $("startSummary").textContent = describeSettings();
-  });
+  document.addEventListener("uwusnek:settings", () => setEdition(edition, { save: false }));
 
   $("toolDock").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-tool]");

@@ -77,6 +77,8 @@
     <!-- The game area: the whole screen behind the controls. Swipes and taps
          on it steer; nothing on it scrolls, zooms or reloads the page. -->
     <main id="stage" class="stage" aria-label="Game">
+        <!-- Slither's world, the whole screen, shown only in that edition. -->
+        <canvas id="world" class="world" role="img" aria-label="The Slither world around your snake"></canvas>
         <canvas id="board" class="board" role="img" aria-label="The board: the snake, the fruit, and any walls"></canvas>
         <p id="stageNote" class="stage-note" role="status" aria-live="polite" hidden></p>
     </main>
@@ -93,7 +95,16 @@
             <span>Snake Game</span>
         </h1>
         <div id="hudStats" class="hud-stats" role="group" aria-label="Game stats"></div>
+        <div id="slitherHud" class="slither-hud" hidden>
+            <button id="joinChip" class="join-chip" type="button" aria-haspopup="dialog" aria-label="Join code, and who is in this world">
+                <span data-icon="users"></span><span>Join</span><b id="joinCodeText">...</b><span id="joinCount" class="join-count"></span>
+            </button>
+            <div id="slitherStats" class="hud-stats" role="group" aria-label="Your length and the biggest snakes"></div>
+        </div>
     </header>
+
+    <p id="slitherNote" class="stage-note slither-note" role="status" aria-live="polite" hidden></p>
+    <button id="boostBtn" class="boost-btn" type="button" aria-label="Boost, while held" hidden>Boost</button>
 
     <div class="hud-right">
         <div class="hud-pause">
@@ -150,6 +161,7 @@
             <div id="editionList" class="edition-list" role="radiogroup" aria-label="Edition" hidden></div>
 
             <form id="startForm" class="start-form" autocomplete="off">
+                <div id="levelBlock" class="level-block">
                 <label class="start-label" for="startLevel">Start at level</label>
                 <div class="level-row">
                     <div id="levelChips" class="level-chips" role="group" aria-label="Quick levels">
@@ -162,6 +174,11 @@
                         aria-describedby="levelNote">
                 </div>
                 <p id="levelNote" class="submit-note">Higher levels move faster and score more for every fruit.</p>
+                </div>
+                <div id="skinRow" class="skin-row" hidden>
+                    <p class="start-label">Your snake</p>
+                    <button id="startSkinBtn" class="btn btn-quiet pill" type="button"><span data-icon="snake"></span>Skin and name</button>
+                </div>
 
                 <label class="start-label" for="startSeed">Seed</label>
                 <input id="startSeed" class="field seed-input" type="text" placeholder="Random, or paste one" maxlength="24"
@@ -176,7 +193,13 @@
                     <button id="startPartyBtn" class="btn btn-quiet pill big" type="button"><span data-icon="users"></span>Play with others</button>
                 </div>
             </form>
-            <p class="keys-legend">
+            <p id="slitherKeys" class="keys-legend" hidden>
+                <span class="kbd-only">Your snake heads for the pointer. Hold the mouse button, <kbd>Space</kbd> or <kbd>&uarr;</kbd> to boost;
+                    <kbd>&larr;</kbd> <kbd>&rarr;</kbd> steer too.</span>
+                <span class="touch-only">Your snake heads for your finger. Hold Boost, or a second finger, to speed up.</span>
+                Boosting costs length. Cut others off and they turn into big dots.
+            </p>
+            <p id="classicKeys" class="keys-legend">
                 <span class="kbd-only"><kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>
                     to steer, <kbd>Space</kbd> to pause.</span>
                 <span class="touch-only">Swipe on the board to steer, or tap one of its edges.</span>
@@ -274,6 +297,39 @@
             <a class="coffee-link" href="https://donate.stripe.com/28o2akeAr3hv0DK6oo" target="_blank" rel="noopener noreferrer">
                 <span data-icon="coffee"></span>Buy Augy a Coffee
             </a>
+        </div>
+    </div>
+
+    <!-- Slither: a life ended. -->
+    <div class="overlay hidden" id="slitherOver">
+        <div class="modal glass panel" role="dialog" aria-modal="true" aria-labelledby="sOverTitle">
+            <h2 id="sOverTitle">Eaten</h2>
+            <p id="sOverCause" class="over-cause"></p>
+            <dl class="final-stats">
+                <div><dt>Length</dt><dd id="sFinalLength">0</dd></div>
+                <div><dt>Kills</dt><dd id="sFinalKills">0</dd></div>
+                <div><dt>Best rank</dt><dd id="sFinalRank">-</dd></div>
+                <div><dt>Time</dt><dd id="sFinalTime">0:00</dd></div>
+            </dl>
+            <p id="sBest" class="submit-note"></p>
+            <p class="seed-line">
+                Seed <code class="seed-code"></code>
+                <button class="btn btn-quiet pill" type="button" data-copy-seed><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </p>
+            <div class="panel-actions">
+                <button id="sAgainBtn" class="btn btn-primary pill" type="button"><span data-icon="refresh"></span>Play again</button>
+                <button id="sReplayBtn" class="btn btn-quiet pill" type="button"><span data-icon="replay"></span>Watch replay</button>
+                <button id="sShareBtn" class="btn btn-quiet pill" type="button"><span data-icon="share"></span>Share replay</button>
+                <button id="sSkinBtn" class="btn btn-quiet pill" type="button"><span data-icon="snake"></span>Skin</button>
+                <button id="sLeaveBtn" class="btn btn-quiet pill" type="button"><span data-icon="home"></span>Leave world</button>
+            </div>
+            <p id="sShareMsg" class="submit-msg ok-msg" role="status" aria-live="polite"></p>
+            <div id="sShareRow" class="guess" hidden>
+                <label for="sShareLink" class="visually-hidden">Replay link</label>
+                <input id="sShareLink" class="field" type="text" readonly>
+                <button id="sCopyLinkBtn" class="btn btn-quiet" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </div>
+            <p class="submit-note">Slither stays off the leaderboard: its computer snakes and everyone in the world run on these devices, so no server can check it.</p>
         </div>
     </div>
 
@@ -388,6 +444,13 @@
             </div>
             <p id="scoringNote" class="mode-note"></p>
 
+            <p class="modal-section-label">Slither graphics</p>
+            <div class="mode-toggle" id="graphicsToggle">
+                <button class="mode-btn" type="button" data-graphics="high" aria-pressed="false">High quality</button>
+                <button class="mode-btn" type="button" data-graphics="low" aria-pressed="false">Low quality</button>
+            </div>
+            <p class="mode-note">Low quality drops the glow, shading and floor pattern, for older phones.</p>
+
             <p class="mode-note">
                 Hard moves faster and scores half as much again; Easy is slower and scores less. A time limit
                 ends the game when it runs out, and a fruit timer moves any fruit you do not reach in time. Both
@@ -471,6 +534,68 @@
                     <button id="leaveBtn" class="btn btn-quiet pill" type="button">Leave</button>
                 </div>
             </section>
+        </div>
+    </div>
+
+    <!-- Slither: the world's join code, and who is in it -->
+    <div class="modal-backdrop hidden" id="worldModal">
+        <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="worldModalTitle">
+            <div class="modal-head">
+                <h2 id="worldModalTitle">This world</h2>
+                <button class="icon-btn small" type="button" data-close-modal="worldModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="party-code" id="worldCode" aria-label="Join code"></p>
+            <div id="worldQr" class="party-qr"></div>
+            <p class="party-link">
+                <span id="worldLink"></span>
+                <button id="worldCopyBtn" class="btn btn-quiet pill" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </p>
+            <p id="worldStatus" class="mode-note" role="status" aria-live="polite"></p>
+            <p class="mode-note">
+                Everyone has to be on the same network: the same wifi, or a hotspot on one device that the others join.
+                They join with Play with others, then Join and this code, or by the link or the QR code. If you leave,
+                whoever joined first carries the world on.
+            </p>
+            <p class="modal-section-label">In this world</p>
+            <ul id="worldPeople" class="party-people"></ul>
+            <div class="panel-actions">
+                <button id="worldLeaveBtn" class="btn btn-quiet pill" type="button"><span data-icon="home"></span>Leave world</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slither: build a skin -->
+    <div class="modal-backdrop hidden" id="skinModal">
+        <div class="modal glass skin-modal" role="dialog" aria-modal="true" aria-labelledby="skinModalTitle">
+            <div class="modal-head">
+                <h2 id="skinModalTitle">Your snake</h2>
+                <button class="icon-btn small" type="button" data-close-modal="skinModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <form id="skinForm" class="skin-form" autocomplete="off">
+                <canvas id="skinPreview" class="skin-preview" aria-label="Your snake as it will look"></canvas>
+                <label class="modal-section-label" for="skinName">Name in the world</label>
+                <input id="skinName" class="field" type="text" maxlength="20" placeholder="Player" spellcheck="false" autocomplete="nickname">
+                <p class="modal-section-label">Ready-made</p>
+                <div id="skinPresets" class="skin-presets"></div>
+                <p class="modal-section-label">Build your own</p>
+                <div class="skin-seq-row">
+                    <div id="skinSeq" class="skin-seq" aria-label="Your colours, head first"></div>
+                    <button id="skinClear" class="btn btn-quiet pill" type="button">Start over</button>
+                </div>
+                <p id="skinSeqNote" class="mode-note"></p>
+                <div id="skinPalette" class="skin-palette" aria-label="Colours"></div>
+                <p class="modal-section-label">Pattern</p>
+                <div id="skinPattern" class="mode-toggle thirds"></div>
+                <p class="modal-section-label">Outfit</p>
+                <div id="skinOutfit" class="mode-toggle outfits"></div>
+                <div class="panel-actions">
+                    <button class="btn btn-primary pill" type="submit"><span data-icon="check"></span>Save</button>
+                </div>
+            </form>
         </div>
     </div>
 

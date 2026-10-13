@@ -5,6 +5,8 @@ import { initGame } from "./game.js";
 import { initLeaderboard, openLeaderboard } from "./leaderboard.js";
 import { initSettings, openSettings } from "./settings.js";
 import { initParty, openParty, partyHooks } from "./party.js";
+import { initSlither } from "./slither-game.js";
+import { cleanSlitherReplay } from "./slither-replay.js";
 import { api } from "./api.js";
 import { cleanReplay, unpackReplay } from "./replay-format.js";
 import { normaliseCode } from "./p2p.js";
@@ -134,7 +136,7 @@ function initFullscreen() {
   sync();
 }
 
-function wireModals(game) {
+function wireModals(game, slither) {
   document.querySelectorAll("[data-close-modal]").forEach((btn) => {
     btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
   });
@@ -152,19 +154,21 @@ function wireModals(game) {
   // game paused, so nothing moves while the player finds their place again.
   const pausing = (open) => () => {
     game.pause();
+    slither.pause();
     open();
   };
   document.getElementById("themeBtn").addEventListener("click", pausing(() => openModal("themeModal")));
   document.getElementById("boardBtn").addEventListener("click", pausing(() => openLeaderboard()));
   document.getElementById("settingsBtn").addEventListener("click", pausing(openSettings));
-  document.getElementById("partyBtn").addEventListener("click", () => openParty());
+  // In a Slither world, the people button shows that world's join code.
+  document.getElementById("partyBtn").addEventListener("click", () => (slither.inWorld ? slither.openWorld() : openParty()));
   document.getElementById("startPartyBtn").addEventListener("click", () => openParty());
 }
 
 /* Links that open something: /join?id=CODE from a party's QR code,
    /r/<id> for a stored replay, and /?replay=... for one in the link. */
 
-async function openLink(game) {
+async function openLink(game, slither) {
   const path = location.pathname;
   const params = new URLSearchParams(location.search);
 
@@ -178,7 +182,7 @@ async function openLink(game) {
 
   const short = path.match(/^\/r\/([A-Za-z0-9]{8})$/);
   if (short) {
-    await watchStored(game, short[1], { fromLink: true });
+    await watchStored(game, slither, short[1], { fromLink: true });
     return;
   }
 
@@ -195,10 +199,15 @@ async function openLink(game) {
 
 // A stored replay, from its link or from the leaderboard. From the board,
 // whatever was on screen stays underneath, to go back to after.
-async function watchStored(game, id, { fromLink = false } = {}) {
+async function watchStored(game, slither, id, { fromLink = false } = {}) {
   if (fromLink) game.showStart({ message: "Loading the replay." });
   try {
     const data = await api.replay(id);
+    if (data.kind === "slither") {
+      const sreplay = cleanSlitherReplay(data.replay);
+      if (sreplay && slither.openReplay(sreplay, { shared: true, verified: data.verified })) return;
+      throw new Error("unplayable");
+    }
     const replay = cleanReplay(data.replay);
     if (replay && game.openReplay(replay, { shared: true, verified: data.verified })) return;
     throw new Error("unplayable");
@@ -227,16 +236,19 @@ function boot() {
   initTray();
   initFullscreen();
   initSettings();
-  const game = initGame(partyHooks);
+  const hooks = { ...partyHooks };
+  const game = initGame(hooks);
+  const slither = initSlither({ showStart: (opts) => game.showStart(opts) });
+  hooks.startSlither = (opts) => slither.start(opts);
   initLeaderboard({
     onWatch: (id) => {
       closeModal("boardModal");
-      watchStored(game, id);
+      watchStored(game, slither, id);
     },
   });
-  initParty(game);
-  wireModals(game);
-  openLink(game);
+  initParty(game, { onSlither: (guest, code, hello) => slither.joinWith(guest, code, hello) });
+  wireModals(game, slither);
+  openLink(game, slither);
   initUpdateBar();
 }
 

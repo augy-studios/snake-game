@@ -16,6 +16,7 @@ import { qrToSvg } from "./qr.js";
 import { getSettings } from "./settings.js";
 import { closeModal, escapeHtml, openModal, store } from "./ui.js";
 import { TOOL_COOLDOWN_MS } from "./game.js";
+import { storedName, storedSkin } from "./slither-skins.js";
 
 const MAX_GUESTS = 7;
 const CODE_KEY = "uwusnek.hostCode";
@@ -28,6 +29,8 @@ const PING_MS = 1000;
 const $ = (id) => document.getElementById(id);
 
 let game = null;
+// Hands a connection over to Slither when the host turns out to be a world.
+let onSlither = null;
 
 /* ---- Snapshots ----
    The board in as few bytes as JSON allows: bodies as flat coordinate
@@ -459,7 +462,9 @@ async function join(input) {
       );
     } else if (s === "error") setGuestStatus(detail.message);
   });
-  guest.addEventListener("message", ({ detail: { message } }) => onHostMessage(message));
+  guest.addEventListener("message", ({ detail: { message } }) => {
+    if (joining.guest === guest) onHostMessage(message);
+  });
 
   clearInterval(joining.pinger);
   joining.pinger = setInterval(() => {
@@ -475,7 +480,8 @@ async function join(input) {
   try {
     // The seat key, the name and whether to play travel with the connection,
     // so a reconnect brings all three back.
-    await guest.connect(code, { pid: partyId(), name: myName(), role: wantedRole });
+    // A Slither host reads the skin and the name for the world as well.
+    await guest.connect(code, { pid: partyId(), name: myName(), role: wantedRole, skin: storedSkin(store), sname: storedName(store) || myName() });
   } catch {
     setGuestStatus("Could not load pairing. Check your connection.");
   }
@@ -484,6 +490,16 @@ async function join(input) {
 function onHostMessage(message) {
   joining.heardAt = performance.now();
   switch (message.type) {
+    case "edition":
+      // The code is a Slither world's: it takes this connection from here.
+      if (message.edition === "slither" && onSlither) {
+        const guest = joining.guest;
+        clearInterval(joining.pinger);
+        joining.guest = null;
+        store.set(LAST_KEY, joining.code);
+        onSlither(guest, joining.code, message);
+      }
+      break;
     case "state":
       onHostState(message);
       break;
@@ -626,8 +642,9 @@ export function openParty({ code = "" } = {}) {
   openModal("partyModal");
 }
 
-export function initParty(controller) {
+export function initParty(controller, hooks = {}) {
   game = controller;
+  onSlither = hooks.onSlither ?? null;
   $("hostBtn").addEventListener("click", startHosting);
   $("joinForm").addEventListener("submit", (e) => {
     e.preventDefault();

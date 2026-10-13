@@ -34,6 +34,11 @@ and the server always agree on a game.
 | `qr.js` | QR encoder for the join link, from uwuPromptr, so it works offline. |
 | `api.js`, `leaderboard.js`, `settings.js` | The API client, and the leaderboard and settings windows, after MRT Station Guesser's. |
 | `theme.js`, `icons.js`, `ui.js`, `update-bar.js`, `app.js` | Theme, inline SVG icons, modal and storage helpers, the update bar, and boot. |
+| `slither-rules.js` | Slither's world: whole-number movement and trigonometry, dots, boosting, collisions, the computer snakes, snapshots. Pure. |
+| `slither-replay.js` | Slither's replay format, checking it, and playing one back. Pure; the API imports it. |
+| `slither-skins.js` | The palette, patterns, outfits and ready-made skins, and skin codes. |
+| `slither-render.js` | Draws a Slither world, in high or low quality. |
+| `slither-game.js` | Slither on screen: steering, boosting, hosting and joining, host migration, dying, replays, the skin builder. |
 
 ## The game
 
@@ -112,6 +117,56 @@ added to the home screen, the app is full screen already.
 | Game time limit | None | Ends the game when it runs out; scales the points. |
 | Fruit timer | None | Moves a fruit not reached in time; scales the points. |
 
+## Slither
+
+Pick Slither on the pre-game screen, set a skin and a name if you like, and
+press Play. You land in a new round world, 5,200 pixels across, of glowing
+dots and nineteen computer snakes.
+
+**Playing:** your snake heads for the pointer, or for your finger on a
+touch screen; `←` `→` steer too. Hold the mouse button, `Space` or `↑`, or on
+a touch screen the Boost button or a second finger, to go twice as fast;
+boosting burns length, dropped behind as dots. Run into another snake's body,
+or the edge of the world, and you are out: your snake turns into a trail of
+big dots for everyone else. So boost across in front of another snake and it
+becomes yours to eat. The biggest five show top left with your length and
+rank, and a minimap bottom right. A big snake is fatter, turns more slowly,
+and sees further: the camera zooms out as it grows.
+
+**Others joining:** the world is open to others from its first second. The
+join code shows top left; tap it for the QR code and the link. Anyone on the
+same network joins with Play with others, then Join and the code, or the
+link or QR code, at any time, up to twelve of them. Each joiner takes a
+computer snake's place, so a world holds about twenty snakes however many
+people are in it. Everyone runs the world on their own device in step from
+everyone's inputs, so only inputs travel, and a joiner who drops or reloads
+gets their snake back; the computer steers it meanwhile. When the host
+leaves, the first person to have joined carries on hosting the world under
+the same code, and everyone else is moved over to them.
+
+**Dying:** a panel with your length, kills, best rank and time, and Play
+again, which drops a new snake into the same world. Watch replay plays your
+life back with the same controls as Classic's, a quarter second a step;
+Share replay stores it for a short `/r/<id>` link, online only, since it
+carries the world it began in. The seed shows there too; paste it on the
+pre-game screen for the same world, the same dots and computer snakes, for
+as long as nobody else joins.
+
+**Autoplay:** `F2`, or three quick taps on the game's name on a touch
+screen, as in Classic: the computer's sharpest steering takes over. A life
+it touched does not count towards your best.
+
+**Skins:** Skin and name, on the pre-game screen and the death panel. Pick a
+ready-made one, or build your own from forty colours, some starred, up to
+twelve in a row that repeat down the body; lay them in bands, stripes or
+spots, and add an outfit: a crown, a party hat, a top hat, a bow, shades or
+a halo. Everyone in the world sees it. **Graphics** are in Settings: high
+quality has the glow, shading and floor pattern; low quality draws flat
+shapes at the screen's plain pixel density, for older phones.
+
+**Pausing:** only while nobody else is in the world. Leaving the tab then
+pauses it too.
+
 ## Party games
 
 The people button in the tray, or Play with others on the pre-game screen.
@@ -179,8 +234,12 @@ run can only be submitted with the key that started it.
 | `POST /api/leaderboard/submit` | `run_id, client_key, name, game: { seed, settings, ticks, events }` | `name, score, fruits, length, level, duration_ms, best_score, rank, total, games, total_rank, replay_id` |
 | `POST /api/leaderboard/name` | `name` | `name`, cleaned, or a `400` saying why not |
 | `GET /api/leaderboard` | `?board=best` (default) or `total` | `board, entries`, cached 30 s |
-| `POST /api/replay/create` | `replay` | `id`, for the link `/r/<id>` |
+| `POST /api/replay/create` | `replay`, Classic's or Slither's | `id`, for the link `/r/<id>` |
 | `GET /api/replay` | `?id=<id>` | `id, kind, verified, created_at, replay`, cached a day |
+
+Slither replays need `migrations/002`, may be up to 1 MB, have every name
+run through the leaderboard's word filter and every browser id dropped, and
+are played through before they are stored.
 
 Errors are `{ "error": code, "message"? }`: `400` bad input, `404` no such
 run for this browser, `409` already submitted or seed already used, `410` run

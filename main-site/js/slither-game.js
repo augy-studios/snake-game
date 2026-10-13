@@ -25,10 +25,10 @@ import {
   TICK_MS,
   angleDiff,
   applyEvent,
-  autoSteer,
   iatan2,
   newWorld,
   radiusOf,
+  setBotNames,
   restore,
   snakeOf,
   snapshot,
@@ -40,6 +40,8 @@ import { SlitherPlayer, cleanSlitherReplay } from "./slither-replay.js";
 import { drawPreview, drawWorld, readTheme } from "./slither-render.js";
 import { MAX_COLORS, OUTFITS, PALETTE, PATTERNS, PRESETS, cleanSkin, parseSkin, saveName, saveSkin, skinCode, storedName, storedSkin } from "./slither-skins.js";
 import { closeModal, escapeHtml, hydrateIcons, openModal, store } from "./ui.js";
+import { fitForSnake } from "./wordfilter.js";
+import { planAutoplay } from "./slither-autoplay.js";
 
 const MAX_JOINERS = 12;
 const BEST_KEY = "uwusnek.slitherBest";
@@ -71,6 +73,25 @@ function browserId() {
 
 export function playerName() {
   return storedName(store) || getSettings().name || "Player";
+}
+
+// The computer snakes are named from wordlist.json: its words of four to
+// nine letters that pass the word filter, capitalised. Loaded once, the
+// first time Slither is played or a Slither replay shown, from the service
+// worker's copy when there is one. Until then, the built in names.
+let namesLoading = null;
+function loadNames() {
+  namesLoading ??= fetch("/wordlist.json")
+    .then((r) => (r.ok ? r.json() : null))
+    .then((data) => {
+      const words = Array.isArray(data?.words) ? data.words : Object.values(data ?? {}).flat();
+      const names = words.filter((w) => typeof w === "string" && fitForSnake(w)).map((w) => w[0].toUpperCase() + w.slice(1).toLowerCase());
+      setBotNames(names);
+    })
+    .catch(() => {
+      namesLoading = null;
+    });
+  return namesLoading;
 }
 
 export function initSlither({ showStart }) {
@@ -134,8 +155,13 @@ export function initSlither({ showStart }) {
     wakeLock(true);
   }
 
-  // A new world, hosted here from its first tick.
-  function start({ seed = makeSeed() } = {}) {
+  // A new world, hosted here from its first tick, once the names are in.
+  async function start(opts = {}) {
+    await Promise.race([loadNames(), new Promise((r) => setTimeout(r, 1500))]);
+    startNow(opts);
+  }
+
+  function startNow({ seed = makeSeed() } = {}) {
     stopNet();
     world = newWorld(seed);
     fresh = true;
@@ -260,7 +286,10 @@ export function initSlither({ showStart }) {
 
   // What this player wants this tick: their own steering, or autoplay's.
   function wanted() {
-    if (autoplay && world && snakeOf(world, me)) return autoSteer(world, me);
+    if (autoplay && world && snakeOf(world, me)) {
+      const plan = planAutoplay(world, me);
+      if (plan) return plan;
+    }
     return { angle: input.angle, boost: boosting() };
   }
 
@@ -1055,7 +1084,7 @@ export function initSlither({ showStart }) {
       console.warn("replay did not play:", err);
       return false;
     }
-    replay = { player, playing: false, acc: 0, shared, lastHead: null };
+    replay = { player, playing: false, acc: 0, shared, lastHead: player.spawnAt ?? null };
     replaySpeed = Number(store.get(SPEED_KEY)) || 1;
     if (!REPLAY_SPEEDS.includes(replaySpeed)) replaySpeed = 1;
     document.body.classList.add("slither", "replaying");
@@ -1448,9 +1477,12 @@ export function initSlither({ showStart }) {
   buildSkinModal();
   hydrateIcons();
   requestAnimationFrame(frame);
+  // Slither picked last time: have the names ready before Play is pressed.
+  if (store.get("uwusnek.edition") === "slither") (window.requestIdleCallback ?? setTimeout)(() => loadNames());
 
   return {
     start,
+    prepare: () => Promise.race([loadNames(), new Promise((r) => setTimeout(r, 1500))]),
     joinWith,
     openReplay,
     openWorld,

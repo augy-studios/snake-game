@@ -204,6 +204,7 @@ async function watchStored(game, slither, id, { fromLink = false } = {}) {
   try {
     const data = await api.replay(id);
     if (data.kind === "slither") {
+      await slither.prepare();
       const sreplay = cleanSlitherReplay(data.replay);
       if (sreplay && slither.openReplay(sreplay, { shared: true, verified: data.verified })) return;
       throw new Error("unplayable");

@@ -1,6 +1,7 @@
 // Leaderboard display names. All validation is here, server side.
 
 import { HttpError } from "./http.js";
+import { profane } from "../../js/wordfilter.js";
 
 const MAX_LENGTH = 20;
 
@@ -9,37 +10,9 @@ const MAX_LENGTH = 20;
 // spaces, hyphens and underscores.
 const ALLOWED = /^(?:[\p{L}\p{N}]\p{M}{0,2}|[ _-])+$/u;
 
-// Matched anywhere in the squashed name. Long or unambiguous only, so an
-// ordinary word does not trip it.
-const ANYWHERE = [
-  "fuck", "fck", "shit", "cunt", "bitch", "nigger", "nigga", "faggot", "asshole", "bastard",
-  "wanker", "whore", "pussy", "penis", "vagina", "porn", "retard", "twat", "dildo", "blowjob",
-  "motherf", "hitler", "cocksuck", "jerkoff",
-  // Singlish, Hokkien and Malay.
-  "lanjiao", "lanjio", "chibai", "cheebye", "cheebai", "pukimak", "kanina", "kannina", "nabeh",
-  "knnbccb",
-  // Chinese.
-  "操你", "肏", "屄", "屌", "妈的", "他妈", "傻逼", "傻屄", "煞笔", "贱人", "婊子", "鸡巴", "狗日",
-  "草泥马", "王八蛋", "日你", "干你", "你妈", "去死", "滚蛋", "强奸",
-];
-
-// Matched only as a whole word, since each is also part of harmless words:
-// "assist", "cocktail", "grape", "Dickson", "therapist", "torpedo".
-const WHOLE_WORD = new Set([
-  "ass", "cock", "dick", "rape", "rapist", "fag", "slut", "tits", "cum", "sex", "nazi", "pedo",
-  "knn", "ccb", "cb", "puki", "kkb", "wtf", "stfu",
-]);
-
-const LEET = { 0: "o", 1: "i", 3: "e", 4: "a", 5: "s", 7: "t", 8: "b", 9: "g" };
-const unleet = (s) => s.replace(/[0-9]/g, (d) => LEET[d] ?? d);
-
-export function profane(name) {
-  const lower = name.toLowerCase();
-  const squashed = unleet(lower.replace(/[\s_-]+/g, ""));
-  if (ANYWHERE.some((w) => squashed.includes(w))) return true;
-  const words = lower.split(/[\s_-]+/).map(unleet);
-  return words.some((w) => WHOLE_WORD.has(w));
-}
+// The word filter is shared with the page (Slither names its computer
+// snakes through it), so it lives in js/wordfilter.js.
+export { profane };
 
 // Trimmed, whitespace collapsed, cut to 20 characters, then checked.
 export function cleanName(value) {

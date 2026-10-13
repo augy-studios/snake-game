@@ -39,6 +39,8 @@ and the server always agree on a game.
 | `slither-skins.js` | The palette, patterns, outfits and ready-made skins, and skin codes. |
 | `slither-render.js` | Draws a Slither world, in high or low quality. |
 | `slither-game.js` | Slither on screen: steering, boosting, hosting and joining, host migration, dying, replays, the skin builder. |
+| `slither-autoplay.js` | Autoplay's steering in Slither: plans headings ahead, hunts, seeks clusters of dots. Inputs only, never part of the world. |
+| `wordfilter.js` | The word filter, shared by the leaderboard API and Slither's names. |
 
 ## The game
 
@@ -121,14 +123,16 @@ added to the home screen, the app is full screen already.
 
 Pick Slither on the pre-game screen, set a skin and a name if you like, and
 press Play. You land in a new round world, 5,200 pixels across, of glowing
-dots and nineteen computer snakes.
+dots and nineteen computer snakes, each named from `wordlist.json`: its words
+of four to nine letters that pass the word filter, plus a stricter list of
+words no snake should be called.
 
 **Playing:** your snake heads for the pointer, or for your finger on a
 touch screen; `←` `→` steer too. Hold the mouse button, `Space` or `↑`, or on
 a touch screen the Boost button or a second finger, to go twice as fast;
-boosting burns length, dropped behind as dots. Run into another snake's body,
-or the edge of the world, and you are out: your snake turns into a trail of
-big dots for everyone else. So boost across in front of another snake and it
+boosting burns length, dropped behind as dots. Run into another snake's body
+and you are out: your snake turns into a trail of big dots for everyone else.
+The edge of the world only holds you in; you slide along it. So boost across in front of another snake and it
 becomes yours to eat. The biggest five show top left with your length and
 rank, and a minimap bottom right. A big snake is fatter, turns more slowly,
 and sees further: the camera zooms out as it grows.
@@ -152,9 +156,22 @@ carries the world it began in. The seed shows there too; paste it on the
 pre-game screen for the same world, the same dots and computer snakes, for
 as long as nobody else joins.
 
+**The computer's snakes** go for the best food they can actually reach, and
+never orbit a dot inside their own turning circle. Now and then one hunts a
+nearby snake, boosting to cut across its head, or boosts for a rich dot.
+And now and then one is careless and does not see a player's body, and may
+run into it: big dots for whoever it hit.
+
 **Autoplay:** `F2`, or three quick taps on the game's name on a touch
-screen, as in Classic: the computer's sharpest steering takes over. A life
-it touched does not count towards your best.
+screen, as in Classic. It plays better than the computer's snakes: every
+tick it tries a fan of headings forward under the snake's real turn rate,
+against every body and where every head is about to be, and takes the one
+that stays clear longest and best serves its goal. The goal is a snake it
+can cut off, by boosting to a point ahead of its head and then turning
+across its path, or else the biggest cluster of dots near it. If it has
+still turned more than a full circle in a second and a half, it goes
+straight for a while. A life it touched does not count towards your best.
+`node scripts/bench-autoplay.mjs` compares it with the computer's steering.
 
 **Skins:** Skin and name, on the pre-game screen and the death panel. Pick a
 ready-made one, or build your own from forty colours, some starred, up to

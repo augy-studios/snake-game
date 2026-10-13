@@ -72,7 +72,10 @@ link depend on. Run it after any change to `js/rules.js`, `js/bot.js`,
 `js/seed.js` or `js/replay-format.js`. `test-slither.mjs` does the same for
 Slither: the same world from the same inputs, a world restored from a
 snapshot carrying on identically, and a tick fast enough. Run it after any
-change to `js/slither-rules.js`. A change to either edition's rules also
+change to `js/slither-rules.js`, and bump `RULES_VERSION` there.
+`bench-autoplay.mjs` is not a check: it compares Slither's autoplay with the
+computer's steering, for after changing `js/slither-autoplay.js`. A change
+to either edition's rules also
 changes how old replay links play back, and for Slither, a device on the
 old version cannot share a world with one on the new, so treat one as a new
 version of the game.

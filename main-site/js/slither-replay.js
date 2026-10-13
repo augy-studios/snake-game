@@ -86,6 +86,10 @@ function cleanState(raw, seed, from) {
     if (!isInt(s.boostTicks ?? 0, 0, 1e9)) return null;
     const brain = s.brain && typeof s.brain === "object" ? s.brain : null;
     if (brain && !(isInt(brain.think, 0, 1e9) && isInt(brain.goal, 0, 4095) && isInt(brain.wander, 0, 4095))) return null;
+    const later = ["until", "escapeUntil", "boostUntil", "huntUntil", "dot", "hunt"];
+    if (brain && !(later.every((k) => isInt(brain[k] ?? 0, 0, 1e9)) && isInt(brain.escape ?? 0, 0, 4095) && isInt(brain.home ?? 0, 0, 1))) {
+      return null;
+    }
     snakes.push({
       id: s.id,
       player: s.player,
@@ -102,7 +106,21 @@ function cleanState(raw, seed, from) {
       born: s.born,
       kills: s.kills,
       boostTicks: s.boostTicks ?? 0,
-      brain: brain ? { think: brain.think, goal: brain.goal, wander: brain.wander } : null,
+      brain: brain
+        ? {
+            think: brain.think,
+            goal: brain.goal,
+            wander: brain.wander,
+            dot: brain.dot ?? 0,
+            until: brain.until ?? 0,
+            escape: brain.escape ?? brain.wander,
+            escapeUntil: brain.escapeUntil ?? 0,
+            home: brain.home ?? 0,
+            boostUntil: brain.boostUntil ?? 0,
+            hunt: brain.hunt ?? 0,
+            huntUntil: brain.huntUntil ?? 0,
+          }
+        : null,
       autopilot: s.autopilot === true,
       autoplay: s.autoplay === true,
       autoplayed: s.autoplayed === true,
@@ -187,6 +205,11 @@ export class SlitherPlayer {
       while (i < replay.events.length && replay.events[i][0] === world.tick) applyEvent(world, replay.events[i++]);
       step(world);
       snake = world.players[focus]?.snake ?? snake;
+      // Where the player first appears, for the camera to start on.
+      if (!this.spawnAt) {
+        const s = world.snakes.find((x) => x.id === snake && x.alive);
+        if (s) this.spawnAt = [s.xs[0], s.ys[0]];
+      }
       const mine = world.happened.filter(
         (h) => h.player === focus || (h.type === "death" && h.killer === snake && h.player !== focus)
       );

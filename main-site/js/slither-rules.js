@@ -20,7 +20,7 @@ import { seededInts } from "./seed.js";
 
 // Bump on any change to how the world plays: devices in one world must all
 // run the same rules, and a joiner on other rules is told to reload.
-export const RULES_VERSION = 1;
+export const RULES_VERSION = 2;
 
 export const SUB = 16; // sub-units per pixel
 export const TICK_MS = 32;
@@ -37,13 +37,13 @@ export const FOOD_TARGET = 2600;
 const FOOD_PER_TICK = 10;
 
 export const START_MASS = 10;
-const BOOST_MIN_MASS = 20;
+export const BOOST_MIN_MASS = 20;
 const BOOST_DROP_TICKS = 6;
-const SPEED = 88; // sub-units a tick: about 170 px a second
-const BOOST_SPEED = 180;
+export const SPEED = 88; // sub-units a tick: about 170 px a second
+export const BOOST_SPEED = 180;
 const MAX_SEGMENTS = 320;
-const CELL = 160 * SUB; // the collision grid's cell
-const RESPAWN_BOT_TICKS = 40;
+export const CELL = 160 * SUB; // the collision grid's cell
+const RESPAWN_BOT_TICKS = 12;
 
 /* ---- Trigonometry in whole numbers ---- */
 
@@ -197,11 +197,20 @@ export const DOT_COLORS = 12;
 
 /* -- Snakes -- */
 
-const BOT_NAMES = [
+// Names for the computer snakes, until the word list has loaded.
+let BOT_NAMES = [
   "Noodle", "Wiggles", "Slinky", "Zigzag", "Pickle", "Doodle", "Squiggle", "Mango", "Biscuit", "Pretzel",
   "Ziggy", "Sprout", "Loop", "Twist", "Sunny", "Pebble", "Maple", "Comet", "Bubbles", "Tofu",
   "Kiwi", "Rascal", "Nugget", "Scoot", "Tango", "Jelly", "Ribbon", "Sprinkle", "Waffle", "Cosmo",
 ];
+
+// The computer snakes' names from the word list (js/slither-game.js loads
+// it). Names are only shown, never played by: the world plays the same
+// whichever list a device has, so one still loading costs nothing but the
+// names.
+export function setBotNames(list) {
+  if (Array.isArray(list) && list.length > 0) BOT_NAMES = list;
+}
 
 function spawnSnake(world, { player = -1, name, skin, rng }) {
   // Of a few places, the one furthest from any other head.
@@ -243,7 +252,7 @@ function spawnSnake(world, { player = -1, name, skin, rng }) {
     born: world.tick,
     kills: 0,
     boostTicks: 0,
-    brain: player < 0 ? { think: 0, goal: angle, wander: angle } : null,
+    brain: player < 0 ? newBrain(angle) : null,
     autopilot: player < 0,
     autoplay: false,
     cause: null,
@@ -320,7 +329,7 @@ export function applyEvent(world, e) {
     if (s) {
       s.autopilot = true;
       s.boost = false;
-      s.brain = { think: 0, goal: s.angle, wander: s.angle };
+      s.brain = newBrain(s.angle);
     }
     note({ type: "leave", player: p, name: player.name });
     return true;
@@ -371,82 +380,198 @@ function trimBots(world, count) {
    ticks: away from the edge, away from any body just ahead, otherwise
    towards the richest dots near it, boosting now and then for a big one. */
 
-function dangerAhead(world, s, angle, reach, grid) {
+function dangerAhead(world, s, angle, reach, grid, careless = false) {
   const r = radiusOf(s.mass);
   for (let k = 1; k <= 4; k += 1) {
     const dist = r + ((reach * k) >> 2);
     const px = s.xs[0] + ((cosOf(angle) * dist) >> 14);
     const py = s.ys[0] + ((sinOf(angle) * dist) >> 14);
     if (px * px + py * py > (ARENA_R - r * 2) ** 2) return true;
-    const hit = grid.near(px, py, s.id, r + 24 * SUB);
+    const hit = grid.near(px, py, s.id, r + 24 * SUB, careless);
     if (hit) return true;
   }
   return false;
 }
 
+// What a computer snake keeps in mind between thoughts: where it wanders,
+// the dot it is after and until when, and a heading it is escaping on.
+export function newBrain(angle) {
+  return { think: 0, goal: angle, wander: angle, dot: 0, until: 0, escape: angle, escapeUntil: 0, home: 0, boostUntil: 0, hunt: 0, huntUntil: 0 };
+}
+
+// Where the rim begins, where a snake heading home counts as home again,
+// and how far out food is still worth going for.
+const RIM = ARENA_R - 450 * SUB;
+const HOME = ARENA_R - 950 * SUB;
+const FOOD_LIMIT = ARENA_R - 600 * SUB;
+
+// How far round a snake's tightest turn reaches, in sub-units: anything
+// inside the circle it turns on, either side, it can only orbit, never reach.
+function turnRadius(r) {
+  return Math.floor((SPEED * ANG * 1000) / (turnRateOf(r) * 6283));
+}
+
+// Whether a point is somewhere a snake can steer to from its heading now,
+// rather than inside one of its turning circles.
+function reachable(s, x, y, r) {
+  const dx = x - s.xs[0];
+  const dy = y - s.ys[0];
+  const c = cosOf(s.angle);
+  const sn = sinOf(s.angle);
+  const f = Math.trunc((dx * c + dy * sn) / 16384);
+  const l = Math.abs(Math.trunc((-dx * sn + dy * c) / 16384));
+  const R = turnRadius(r);
+  return f * f + (l - R) * (l - R) >= R * R;
+}
+
 function think(world, s, grid, sharp) {
-  const b = s.brain ?? (s.brain = { think: 0, goal: s.angle, wander: s.angle });
+  const b = s.brain ?? (s.brain = newBrain(s.angle));
+  if (b.home === undefined) Object.assign(b, newBrain(s.angle), { wander: b.wander ?? s.angle });
   if (!sharp && (world.tick + s.id) % 4 !== 0) return;
   const rng = rngFor(world, "think", s.id, world.tick);
   const hx = s.xs[0];
   const hy = s.ys[0];
   const r = radiusOf(s.mass);
   const reach = (sharp ? 260 : 200) * SUB + r * 4;
+  // Now and then a computer snake does not notice a player's snake in its
+  // way, and may run into it: a gift of big dots. Never on autoplay's
+  // sharp steering, which always looks.
+  const careless = !sharp && rng(100) < 16;
+  // A burst of boost lasts its time, unless something is in the way.
+  s.boost = b.boostUntil > world.tick && s.mass > 30;
 
-  // Near the rim: back towards the middle.
+  // Near the rim: back towards the middle, and keep going until well
+  // inside. Turning back the moment it crosses a line had snakes swinging
+  // in and out across it, round and round.
   const fromCentre = isqrt(hx * hx + hy * hy);
-  if (fromCentre > ARENA_R - 500 * SUB) {
+  if (fromCentre > RIM) b.home = 1;
+  else if (fromCentre < HOME) b.home = 0;
+  if (b.home) {
     s.target = iatan2(-hy, -hx);
     s.boost = false;
+    b.dot = 0;
+    b.hunt = 0;
     return;
   }
 
-  // Something in the way: the nearest clear heading either side.
-  if (dangerAhead(world, s, s.angle, reach, grid)) {
-    for (const off of [384, -384, 768, -768, 1152, -1152, 1536, -1536]) {
-      const a = (s.angle + off) & (ANG - 1);
-      if (!dangerAhead(world, s, a, reach, grid)) {
-        s.target = a;
-        s.boost = false;
-        return;
-      }
-    }
-    s.target = (s.angle + HALF) & (ANG - 1);
+  // Escaping: keep the heading picked, while it stays clear, rather than
+  // picking a new one off the current heading every thought, which turns
+  // a snake round and round.
+  if (b.escapeUntil > world.tick && !dangerAhead(world, s, b.escape, reach, grid, careless)) {
+    s.target = b.escape;
     s.boost = false;
     return;
   }
 
-  // The best dot near enough: value over distance.
-  let best = null;
-  const look = (sharp ? 520 : 380) * SUB;
-  const c0x = Math.floor((hx - look) / CELL);
-  const c1x = Math.floor((hx + look) / CELL);
-  const c0y = Math.floor((hy - look) / CELL);
-  const c1y = Math.floor((hy + look) / CELL);
-  for (let cx = c0x; cx <= c1x; cx += 1) {
-    for (let cy = c0y; cy <= c1y; cy += 1) {
-      const set = world.dotGrid.get(cx * 4096 + cy);
-      if (!set) continue;
-      for (const id of set) {
-        const d = world.dots.get(id);
-        const dx = d.x - hx;
-        const dy = d.y - hy;
-        const dist = isqrt(dx * dx + dy * dy);
-        const score = Math.floor((d.v * 1_000_000) / (dist + 400 * SUB));
-        if (!best || score > best.score) best = { d, score, dist };
+  // Something in the way: the nearest clear heading, trying first the side
+  // it wanted to go anyway.
+  const dot = b.dot ? world.dots.get(b.dot) : null;
+  const wanted = dot ? iatan2(dot.y - hy, dot.x - hx) : b.wander;
+  if (dangerAhead(world, s, s.angle, reach, grid, careless)) {
+    s.boost = false;
+    b.boostUntil = 0;
+    b.hunt = 0;
+    const side = angleDiff(s.angle, wanted) >= 0 ? 1 : -1;
+    for (const step of [384, 768, 1152, 1536]) {
+      for (const sign of [side, -side]) {
+        const a = (s.angle + sign * step) & (ANG - 1);
+        if (!dangerAhead(world, s, a, reach, grid, careless)) {
+          b.escape = a;
+          b.escapeUntil = world.tick + 16;
+          s.target = a;
+          b.dot = 0;
+          return;
+        }
       }
     }
+    s.target = (s.angle + side * 1024) & (ANG - 1);
+    return;
   }
-  if (best) {
-    const a = iatan2(best.d.y - hy, best.d.x - hx);
-    if (!dangerAhead(world, s, a, reach, grid)) {
-      s.target = a;
-      s.boost = s.mass > 40 && best.d.v >= 4 && best.dist > 120 * SUB && rng(100) < (sharp ? 70 : 35);
-      return;
+
+  // Hunting, now and then: a snake whose head is near, cut off by getting
+  // to a point ahead of it first, with a burst of boost.
+  let prey = b.hunt && world.tick < b.huntUntil ? world.snakes.find((o) => o.id === b.hunt && o.alive) : null;
+  if (!prey && s.mass > 40 && rng(100) < (sharp ? 40 : 12)) {
+    let near = null;
+    for (const o of world.snakes) {
+      if (!o.alive || o === s) continue;
+      const dx = o.xs[0] - hx;
+      const dy = o.ys[0] - hy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < (360 * SUB) ** 2 && (!near || d2 < near.d2)) near = { o, d2 };
+    }
+    if (near) {
+      prey = near.o;
+      b.hunt = prey.id;
+      b.huntUntil = world.tick + 48;
+      b.boostUntil = world.tick + 24 + rng(16);
     }
   }
-  // Nothing worth it: wander.
-  if (rng(100) < 8) b.wander = (b.wander + rng(1024) - 512) & (ANG - 1);
+  if (prey) {
+    const lead = 200 * SUB;
+    const px = prey.xs[0] + ((cosOf(prey.angle) * lead) >> 14);
+    const py = prey.ys[0] + ((sinOf(prey.angle) * lead) >> 14);
+    const a = iatan2(py - hy, px - hx);
+    if (px * px + py * py < FOOD_LIMIT * FOOD_LIMIT && reachable(s, px, py, r) && !dangerAhead(world, s, a, reach, grid, careless)) {
+      s.target = a;
+      s.boost = b.boostUntil > world.tick && s.mass > 30;
+      return;
+    }
+    b.hunt = 0;
+    b.boostUntil = 0;
+    s.boost = false;
+  }
+
+  // Food: the dot it is after, while it is still there and reachable;
+  // otherwise the best reachable one near enough, value over distance.
+  let goal = dot && world.tick < b.until && reachable(s, dot.x, dot.y, r) ? dot : null;
+  if (!goal) {
+    let best = null;
+    const look = (sharp ? 520 : 380) * SUB;
+    const c0x = Math.floor((hx - look) / CELL);
+    const c1x = Math.floor((hx + look) / CELL);
+    const c0y = Math.floor((hy - look) / CELL);
+    const c1y = Math.floor((hy + look) / CELL);
+    for (let cx = c0x; cx <= c1x; cx += 1) {
+      for (let cy = c0y; cy <= c1y; cy += 1) {
+        const set = world.dotGrid.get(cx * 4096 + cy);
+        if (!set) continue;
+        for (const id of set) {
+          const d = world.dots.get(id);
+          const dx = d.x - hx;
+          const dy = d.y - hy;
+          const dist = isqrt(dx * dx + dy * dy);
+          if (dist > look || !reachable(s, d.x, d.y, r)) continue;
+          // Food by the rim would only lead back out to it.
+          if (d.x * d.x + d.y * d.y > FOOD_LIMIT * FOOD_LIMIT) continue;
+          const score = Math.floor((d.v * 1_000_000) / (dist + 400 * SUB));
+          if (!best || score > best.score) best = { d, score };
+        }
+      }
+    }
+    goal = best?.d ?? null;
+    b.dot = goal ? goal.id : 0;
+    b.until = world.tick + 64;
+  }
+  if (goal) {
+    const a = iatan2(goal.y - hy, goal.x - hx);
+    if (!dangerAhead(world, s, a, reach, grid, careless)) {
+      const dx = goal.x - hx;
+      const dy = goal.y - hy;
+      const dist = isqrt(dx * dx + dy * dy);
+      s.target = a;
+      // A rich dot a little way off is worth a burst, sometimes.
+      if (!s.boost && s.mass > 35 && goal.v >= 3 && dist > 140 * SUB && rng(100) < (sharp ? 60 : 25)) {
+        b.boostUntil = world.tick + 12 + rng(16);
+        s.boost = true;
+      }
+      return;
+    }
+    b.dot = 0;
+  }
+
+  // Nothing worth it: wander, mostly straight on.
+  if (rng(100) < 6) b.wander = (s.angle + rng(1024) - 512) & (ANG - 1);
   s.target = b.wander;
   s.boost = false;
 }
@@ -486,7 +611,7 @@ function bodyGrid(world) {
   return {
     // Whether any segment of a snake other than `self` is within `reach` of
     // (x, y), counting that segment's own radius. The snake it belongs to.
-    near(x, y, self, reach) {
+    near(x, y, self, reach, skipPlayers = false) {
       const cx = Math.floor(x / CELL);
       const cy = Math.floor(y / CELL);
       for (let ix = cx - 1; ix <= cx + 1; ix += 1) {
@@ -496,6 +621,7 @@ function bodyGrid(world) {
           for (let k = 0; k < list.length; k += 3) {
             const o = list[k];
             if (o.id === self) continue;
+            if (skipPlayers && o.player >= 0 && !o.autopilot) continue;
             const i = list[k + 1];
             const lim = reach + list[k + 2];
             const dx = o.xs[i] - x;
@@ -556,6 +682,15 @@ export function step(world) {
     s.xs[0] += (cosOf(s.angle) * speed) >> 14;
     s.ys[0] += (sinOf(s.angle) * speed) >> 14;
     const r = radiusOf(s.mass);
+    // The edge of the world holds a snake in: a head that would go past it
+    // is put back just inside, so the snake slides along the edge.
+    const lim = ARENA_R - r;
+    const d2 = s.xs[0] * s.xs[0] + s.ys[0] * s.ys[0];
+    if (d2 > lim * lim) {
+      const d = isqrt(d2);
+      s.xs[0] = Math.trunc((s.xs[0] * lim) / d);
+      s.ys[0] = Math.trunc((s.ys[0] * lim) / d);
+    }
     const sp = spacingOf(r);
     for (let i = 1; i < s.xs.length; i += 1) {
       const dx = s.xs[i - 1] - s.xs[i];
@@ -620,7 +755,7 @@ export function step(world) {
   }
 
   // Collisions, all decided before any is applied: a head into another
-  // snake's body, or out of the arena.
+  // snake's body. The edge only holds snakes in.
   const after = bodyGrid(world);
   const dying = [];
   for (const s of world.snakes) {
@@ -628,10 +763,6 @@ export function step(world) {
     const r = radiusOf(s.mass);
     const hx = s.xs[0];
     const hy = s.ys[0];
-    if (hx * hx + hy * hy > (ARENA_R - r) * (ARENA_R - r)) {
-      dying.push([s, "edge", null]);
-      continue;
-    }
     const hit = after.near(hx, hy, s.id, (r * 5) >> 3);
     if (hit) dying.push([s, "snake", hit]);
   }
@@ -670,10 +801,14 @@ export function snapshot(world) {
     nextSnake: world.nextSnake,
     nextDot: world.nextDot,
     foodSpawned: world.foodSpawned,
-    players: world.players,
+    // Copies, not the world's own: a snapshot kept while the world goes on
+    // (a replay's keyframes) must not change with it. Sharing these let a
+    // later join or spawn reach back into an earlier keyframe, so playing
+    // from it skipped the player's own spawn.
+    players: structuredClone(world.players),
     snakes: world.snakes.map((s) => ({ ...s, xs: [...s.xs], ys: [...s.ys], brain: s.brain ? { ...s.brain } : null })),
     dots: [...world.dots.values()].map((d) => [d.id, d.x, d.y, d.v, d.c]),
-    incoming: world.incoming,
+    incoming: structuredClone(world.incoming),
   };
 }
 

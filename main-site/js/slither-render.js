@@ -1,10 +1,15 @@
 // Draws a Slither world on the full-screen canvas: the floor, the dots,
 // every snake in its skin, the arena's rim and the minimap. Positions are
 // drawn part way between the last two ticks, so movement is smooth at any
-// frame rate. High quality adds outlines, highlights, halos, the hex floor
+// frame rate. High quality adds outlines, highlights, glows, the hex floor
 // and the screen's full pixel density; low quality draws flat shapes only.
 //
-// No gradients: shading is flat circles laid over each other.
+// The glows are the one place soft gradients are drawn, and only on high
+// quality: each is a sprite drawn once per colour and stamped where it is
+// needed, which costs little, where shadowBlur or a fresh gradient for
+// every dot every frame would cost a lot. On a dark floor they add light
+// to what is under them, as slither.io's do; on a light one, which adding
+// light would bleach white, they are laid over it as a tint.
 
 import { ANG, ARENA_R, SUB, cosOf, radiusOf, sinOf } from "./slither-rules.js";
 import { PALETTE, colorAt, parseSkin } from "./slither-skins.js";
@@ -27,6 +32,58 @@ const tint = (hex, k) => {
 
 // Each palette colour's outline and highlight, worked out once.
 const SKIN_FILL = PALETTE.map((p) => ({ fill: p.hex, edge: shade(p.hex, 0.62), light: tint(p.hex, 0.45), star: Boolean(p.star) }));
+// The light a boost's pulses shine in: each colour, most of the way to white.
+const BOOST_LIGHT = PALETTE.map((p) => {
+  const [r, g, b] = hexRgb(p.hex);
+  const up = (c) => Math.round(c + (255 - c) * 0.7).toString(16).padStart(2, "0");
+  return `#${up(r)}${up(g)}${up(b)}`;
+});
+
+/* ---- Glow sprites ---- */
+
+const SPRITE = 64;
+const sprites = new Map();
+
+// "halo": a soft light fading to nothing. "orb": a lit ball, white hot in
+// the middle, its own colour round it, with a soft edge.
+function glowSprite(hex, kind) {
+  const key = `${kind}|${hex}`;
+  let c = sprites.get(key);
+  if (c) return c;
+  c = document.createElement("canvas");
+  c.width = SPRITE;
+  c.height = SPRITE;
+  const g = c.getContext("2d");
+  const m = SPRITE / 2;
+  const [r, gr, b] = hexRgb(hex);
+  const rgba = (a) => `rgba(${r}, ${gr}, ${b}, ${a})`;
+  const grad = g.createRadialGradient(m, m, 0, m, m, m);
+  if (kind === "halo") {
+    grad.addColorStop(0, rgba(0.7));
+    grad.addColorStop(0.3, rgba(0.32));
+    grad.addColorStop(0.65, rgba(0.08));
+    grad.addColorStop(1, rgba(0));
+  } else if (kind === "orb") {
+    grad.addColorStop(0, "#ffffff");
+    grad.addColorStop(0.28, tint(hex, 0.55));
+    grad.addColorStop(0.62, hex);
+    grad.addColorStop(0.82, rgba(0.55));
+    grad.addColorStop(1, rgba(0));
+  } else {
+    // "orbLight", for a light floor: white in the middle would read as a
+    // hole there, so it is lit off centre and darker at the edge instead.
+    grad.addColorStop(0, tint(hex, 0.3));
+    grad.addColorStop(0.5, hex);
+    grad.addColorStop(0.78, shade(hex, 0.8));
+    grad.addColorStop(1, rgba(0));
+  }
+  g.fillStyle = grad;
+  g.fillRect(0, 0, SPRITE, SPRITE);
+  sprites.set(key, c);
+  return c;
+}
+
+const stamp = (ctx, sprite, x, y, r) => ctx.drawImage(sprite, x - r, y - r, r * 2, r * 2);
 
 export function readTheme() {
   const cs = getComputedStyle(document.documentElement);
@@ -130,27 +187,111 @@ export function drawWorld(ctx, f) {
   drawMinimap(ctx, f);
 }
 
+/* ---- Dots ----
+   On high quality a dot pops in when it appears and, when eaten, is pulled
+   into the mouth that ate it. The world only says which dots there are, so
+   the renderer notices them coming and going itself, a tick at a time. */
+
+const POP_MS = 380;
+const GULP_MS = 170;
+const dotLife = { world: null, tick: -1, born: new Map(), gulps: [] };
+
+function trackDots(f) {
+  const w = f.world;
+  const fresh = dotLife.world !== w || w.tick < dotLife.tick || w.tick - dotLife.tick > 4;
+  if (!fresh && w.tick === dotLife.tick) return;
+  if (fresh) {
+    // A new world, or a jump in one (a replay seeking): no animations for
+    // everything already there.
+    dotLife.world = w;
+    dotLife.born = new Map();
+    dotLife.gulps = [];
+    for (const d of w.dots.values()) dotLife.born.set(d.id, { d, at: -Infinity });
+  } else {
+    for (const d of w.dots.values()) if (!dotLife.born.has(d.id)) dotLife.born.set(d.id, { d, at: f.now });
+    for (const [id, e] of dotLife.born) {
+      if (w.dots.has(id)) continue;
+      dotLife.born.delete(id);
+      // Eaten by the nearest head in reach, if any.
+      let eater = null;
+      let near = Infinity;
+      for (const s of w.snakes) {
+        if (!s.alive) continue;
+        const d2 = (s.xs[0] - e.d.x) ** 2 + (s.ys[0] - e.d.y) ** 2;
+        const reach = radiusOf(s.mass) + 40 * SUB;
+        if (d2 < reach * reach && d2 < near) {
+          near = d2;
+          eater = s;
+        }
+      }
+      if (eater) dotLife.gulps.push({ d: e.d, at: f.now, eater });
+    }
+  }
+  dotLife.tick = w.tick;
+}
+
 function drawDots(ctx, f, sx, sy, inView, high, zoom) {
   const t = f.now / 1000;
-  for (const d of f.world.dots.values()) {
-    if (!inView(d.x, d.y)) continue;
-    const r = Math.min(18, 4 + d.v * 1.6) * zoom;
-    const x = sx(d.x);
-    const y = sy(d.y);
-    const color = DOT_HEX[d.c % DOT_HEX.length];
-    // Each dot shimmers on its own beat, and big ones pulse in size too.
-    const beat = Math.sin(t * 3.2 + d.id * 1.7);
-    ctx.fillStyle = color;
-    if (high) {
-      ctx.globalAlpha = 0.14 + 0.1 * beat;
+  const dark = f.theme.dark;
+  if (!high) {
+    for (const d of f.world.dots.values()) {
+      if (!inView(d.x, d.y)) continue;
+      ctx.fillStyle = DOT_HEX[d.c % DOT_HEX.length];
+      ctx.globalAlpha = 0.9;
       ctx.beginPath();
-      ctx.arc(x, y, r * (2.3 + (d.v > 3 ? 0.4 * beat : 0)), 0, Math.PI * 2);
+      ctx.arc(sx(d.x), sy(d.y), Math.min(18, 4 + d.v * 1.6) * zoom, 0, Math.PI * 2);
       ctx.fill();
     }
-    ctx.globalAlpha = high ? 0.75 + 0.25 * beat : 0.9;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.globalAlpha = 1;
+    return;
+  }
+
+  trackDots(f);
+  // Where each dot in view is drawn this frame: drifting a little about its
+  // place, shimmering on its own beat, and popping in when new.
+  const shown = [];
+  for (const d of f.world.dots.values()) {
+    if (!inView(d.x, d.y)) continue;
+    const born = dotLife.born.get(d.id)?.at ?? -Infinity;
+    let grow = 1;
+    if (f.now - born < POP_MS) {
+      // Out past full size and back, like something landing.
+      const p = (f.now - born) / POP_MS;
+      grow = 1 + 2.7 * (p - 1) ** 3 + 1.7 * (p - 1) ** 2;
+    }
+    const beat = Math.sin(t * 3.2 + d.id * 1.7);
+    const r = Math.min(18, 4 + d.v * 1.6) * zoom * grow;
+    const x = sx(d.x) + Math.sin(t * 1.3 + d.id) * 1.5 * zoom;
+    const y = sy(d.y) + Math.cos(t * 1.1 + d.id * 0.7) * 1.5 * zoom;
+    shown.push({ d, x, y, r, beat, a: 1 });
+  }
+  // The eaten, pulled into the mouth that ate them, shrinking as they go.
+  dotLife.gulps = dotLife.gulps.filter((g) => f.now - g.at < GULP_MS);
+  for (const g of dotLife.gulps) {
+    const p = (f.now - g.at) / GULP_MS;
+    const ease = p * p;
+    const hx = g.eater.xs[0];
+    const hy = g.eater.ys[0];
+    const wx = g.d.x + (hx - g.d.x) * ease;
+    const wy = g.d.y + (hy - g.d.y) * ease;
+    if (!inView(wx, wy)) continue;
+    shown.push({ d: g.d, x: sx(wx), y: sy(wy), r: Math.min(18, 4 + g.d.v * 1.6) * zoom * (1 - 0.6 * p), beat: 1, a: 1 - p });
+  }
+
+  // Halos first, all together, then the orbs over them.
+  ctx.globalCompositeOperation = dark ? "lighter" : "source-over";
+  for (const s of shown) {
+    const color = DOT_HEX[s.d.c % DOT_HEX.length];
+    // Big dots, a dead snake's, glow wider and pulse.
+    const big = s.d.v > 3;
+    ctx.globalAlpha = Math.min(1, s.a * (dark ? 0.6 + 0.25 * s.beat : 0.42 + 0.14 * s.beat) * (big ? 1.25 : 1));
+    stamp(ctx, glowSprite(color, "halo"), s.x, s.y, s.r * (big ? 3.8 + 0.5 * s.beat : 3.2));
+  }
+  ctx.globalCompositeOperation = "source-over";
+  const orb = dark ? "orb" : "orbLight";
+  for (const s of shown) {
+    ctx.globalAlpha = s.a * (0.82 + 0.18 * s.beat);
+    stamp(ctx, glowSprite(DOT_HEX[s.d.c % DOT_HEX.length], orb), s.x, s.y, s.r * 1.3);
   }
   ctx.globalAlpha = 1;
 }
@@ -166,16 +307,19 @@ function drawSnake(ctx, f, s, sx, sy, inView, high, zoom) {
   const fading = !s.alive;
   if (fading) ctx.globalAlpha = 0.35;
 
-  // A boost lights the body up with a flat glow.
-  if (high && s.boosting && s.alive) {
-    ctx.fillStyle = SKIN_FILL[skin.colors[0]].light;
-    ctx.globalAlpha = 0.22;
+  // A boost lights the snake up: a glow round the body in its own colours,
+  // with pulses of light running down it from the head to the tail.
+  const boosting = high && s.boosting && s.alive;
+  const t = f.now / 1000;
+  const pulse = (i) => 0.5 + 0.5 * Math.sin(t * 15 - i * 0.42);
+  if (boosting) {
+    ctx.globalCompositeOperation = f.theme.dark ? "lighter" : "source-over";
     for (let i = s.xs.length - 1; i >= 0; i -= 2) {
       if (!inView(s.xs[i], s.ys[i])) continue;
-      ctx.beginPath();
-      ctx.arc(sx(px(i)), sy(py(i)), r * 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.globalAlpha = (f.theme.dark ? 0.32 : 0.55) + (f.theme.dark ? 0.3 : 0.35) * pulse(i);
+      stamp(ctx, glowSprite(PALETTE[colorAt(skin, i)].hex, "halo"), sx(px(i)), sy(py(i)), r * (2.3 + 0.5 * pulse(i)));
     }
+    ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
   }
 
@@ -212,6 +356,19 @@ function drawSnake(ctx, f, s, sx, sy, inView, high, zoom) {
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
+  }
+
+  // The pulses, over the body: each segment lit as one passes.
+  if (boosting) {
+    ctx.globalCompositeOperation = f.theme.dark ? "lighter" : "source-over";
+    for (let i = s.xs.length - 1; i >= 0; i -= 1) {
+      const p = pulse(i);
+      if (p < 0.5 || !inView(s.xs[i], s.ys[i])) continue;
+      ctx.globalAlpha = (p - 0.5) * (f.theme.dark ? 1.1 : 0.9);
+      stamp(ctx, glowSprite(BOOST_LIGHT[colorAt(skin, i)], "halo"), sx(px(i)), sy(py(i)), r * 1.25);
+    }
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
   }
 
   // The head: eyes on the way it is going, the pupils on where it is

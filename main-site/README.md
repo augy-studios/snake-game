@@ -39,7 +39,7 @@ and the server always agree on a game.
 | `slither-skins.js` | The palette, patterns, outfits and ready-made skins, and skin codes. |
 | `slither-render.js` | Draws a Slither world, in high or low quality. |
 | `slither-game.js` | Slither on screen: steering, boosting, hosting and joining, host migration, dying, replays, the skin builder. |
-| `slither-autoplay.js` | Autoplay's steering in Slither: plans headings ahead, hunts, seeks clusters of dots. Inputs only, never part of the world. |
+| `slither-autoplay.js` | Autoplay's steering in Slither: plans headings ahead, cuts snakes off, seeks dead snakes' dots. Inputs only, never part of the world. |
 | `wordfilter.js` | The word filter, shared by the leaderboard API and Slither's names. |
 
 ## The game
@@ -165,12 +165,14 @@ run into it: big dots for whoever it hit.
 **Autoplay:** `F2`, or three quick taps on the game's name on a touch
 screen, as in Classic. It plays better than the computer's snakes: every
 tick it tries a fan of headings forward under the snake's real turn rate,
-against every body and where every head is about to be, and takes the one
-that stays clear longest and best serves its goal. The goal is a snake it
-can cut off, by boosting to a point ahead of its head and then turning
-across its path, or else the biggest cluster of dots near it. If it has
-still turned more than a full circle in a second and a half, it goes
-straight for a while. A life it touched does not count towards your best.
+against every body, the body each head lays down as it goes, and where each
+head might turn to, and takes the one that stays clear, keeps the most room
+and best serves its goal. The goal is a snake it has got ahead of, which it
+cuts off by crossing in front of it at a slant, or else the richest pile of
+dots near it, a dead snake's above all. It boosts only to cross in front of
+a snake or to reach a dead snake's dots first. If it has still turned more
+than a full circle in a second and a half, it goes straight for a while. A
+life it touched does not count towards your best.
 `node scripts/bench-autoplay.mjs` compares it with the computer's steering.
 
 **Skins:** Skin and name, on the pre-game screen and the death panel. Pick a
@@ -178,8 +180,10 @@ ready-made one, or build your own from forty colours, some starred, up to
 twelve in a row that repeat down the body; lay them in bands, stripes or
 spots, and add an outfit: a crown, a party hat, a top hat, a bow, shades or
 a halo. Everyone in the world sees it. **Graphics** are in Settings: high
-quality has the glow, shading and floor pattern; low quality draws flat
-shapes at the screen's plain pixel density, for older phones.
+quality has the glowing dots that pop in and get pulled into the mouth that
+eats them, the light running down a boosting snake, shading and the floor
+pattern; low quality draws flat shapes at the screen's plain pixel density,
+for older phones.
 
 **Pausing:** only while nobody else is in the world. Leaving the tab then
 pauses it too.

@@ -1,16 +1,18 @@
 {
     "name": "Snake Game by UwU Apps",
     "short_name": "Snake Game",
-    "description": "A simple snek app; view live snek at a glance!",
+    "description": "Classic Snake with edges that wrap around. Grow long, climb the levels, and play with friends nearby.",
     "icons": [{
-            "src": "XSG-192.png",
+            "src": "/XSG-192.png",
             "type": "image/png",
-            "sizes": "192x192"
+            "sizes": "192x192",
+            "purpose": "any"
         },
         {
-            "src": "XSG-512.png",
+            "src": "/XSG-512.png",
             "type": "image/png",
-            "sizes": "512x512"
+            "sizes": "512x512",
+            "purpose": "any"
         }
     ],
     "screenshots": [{
@@ -27,8 +29,8 @@
         }
     ],
     "start_url": "/",
-    "theme_color": "#cfc",
-    "background_color": "#cfc",
+    "theme_color": "#ccffcc",
+    "background_color": "#ccffcc",
     "display": "standalone",
     "display_override": ["fullscreen", "minimal-ui", "window-controls-overlay"],
     "orientation": "any",
@@ -37,8 +39,7 @@
     "scope": "/",
     "lang": "en",
     "categories": [
-        "entertainment",
-        "lifestyle",
-        "utilities"
+        "games",
+        "entertainment"
     ]
 }

@@ -3,8 +3,22 @@
     "version": 2,
     "cleanUrls": true,
     "regions": ["sin1"],
+    "functions": {
+        "api/leaderboard/submit.js": {
+            "maxDuration": 60
+        },
+        "api/replay/create.js": {
+            "maxDuration": 60
+        }
+    },
     "rewrites": [{
         "source": "/",
+        "destination": "/"
+    }, {
+        "source": "/join",
+        "destination": "/"
+    }, {
+        "source": "/r/:id([A-Za-z0-9]{8})",
         "destination": "/"
     }]
 }

@@ -2,6 +2,38 @@
 <html lang="en">
 
 <head>
+    <meta charset="utf-8">
+    <title>Snake Game | UwU Apps</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Classic Snake with edges that wrap around. Grow long, climb the levels, and play with friends nearby.">
+
+    <script>
+        (function () {
+            var k = "uwusnek";
+            var m = localStorage.getItem(k + ".mode") || "light";
+
+            // Time based mode. Resolved here rather than in theme.js because
+            // theme.js runs after first paint, and an evening reader would
+            // otherwise watch a white page turn dark. Keep the two hours in
+            // step with LIGHT_FROM_HOUR and LIGHT_UNTIL_HOUR in js/theme.js.
+            document.documentElement.setAttribute("data-mode-preference", m);
+            if (m === "time") {
+                var h = new Date().getHours();
+                m = h >= 9 && h < 18 ? "light" : "dark";
+            }
+
+            var c = localStorage.getItem(k + ".colorTheme") || "classic";
+            document.documentElement.setAttribute("data-mode", m);
+            document.documentElement.setAttribute("data-color-theme", c);
+        })();
+        // A tray left collapsed starts collapsed, with no slide on load
+        // (edge-tray-spec.md, 6.4). js/app.js removes the class after.
+        try {
+            if (localStorage.getItem("uwusnek.trayOpen") === "0")
+                document.documentElement.classList.add("tray-start-collapsed");
+        } catch (e) {}
+    </script>
+
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-FMCYFTFPEL"></script>
     <script>
@@ -18,44 +50,452 @@
         crossorigin="anonymous"></script>
 
     <link rel="manifest" href="/manifest.json" />
-
-    <meta charset="utf-8">
-    <title>Snake Game | UwU Apps</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="description" content="A simple snek app; view live snek at a glance!">
+    <link rel="canonical" href="https://snek.uwuapps.org/" />
 
     <meta property="og:type" content="website">
+    <meta property="og:url" content="https://snek.uwuapps.org/" />
     <meta property="og:title" content="Snake Game | UwU Apps" />
     <meta property="og:site_name" content="UwU Apps" />
-    <meta property="og:description" content="A simple snek app; view live snek at a glance!" />
+    <meta property="og:description" content="Classic Snake with edges that wrap around. Grow long, climb the levels, and play with friends nearby." />
 
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Jua">
-    <link rel="stylesheet" href="/style.css">
+    <!-- Jua is self-hosted, so the first offline visit has it too. -->
+    <link rel="preload" href="/fonts/jua-latin.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/css/theme.css">
+    <link rel="stylesheet" href="/css/style.css">
     <meta name="theme-color" content="#ccffcc" />
 
     <!-- Embed Image -->
-    <link rel="apple-touch-icon" href="/XSG-main.png">
+    <link rel="apple-touch-icon" href="/XSG-192.png">
     <link rel="icon" href="/favicon.ico">
     <link rel="shortcut icon" href="/favicon.ico">
     <meta name="twitter:card" content="summary">
-    <meta name="twitter:image:src" content="/XSG-main.png">
-    <meta property="og:image" content="/XSG-main.png" />
-
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script defer="" src="https://use.fontawesome.com/releases/v6.5.2/js/all.js"></script>
+    <meta name="twitter:image:src" content="https://snek.uwuapps.org/XSG-512.png">
+    <meta property="og:image" content="https://snek.uwuapps.org/XSG-512.png" />
 </head>
 
 <body>
-    Snake Game
+    <!-- The game area: the whole screen behind the controls. Swipes and taps
+         on it steer; nothing on it scrolls, zooms or reloads the page. -->
+    <main id="stage" class="stage" aria-label="Game">
+        <canvas id="board" class="board" role="img" aria-label="The board: the snake, the fruit, and any walls"></canvas>
+        <p id="stageNote" class="stage-note" role="status" aria-live="polite" hidden></p>
+    </main>
 
-    <script src="/script.js"></script>
+    <noscript>
+        <p class="noscript">Snake Game needs JavaScript to play.</p>
+    </noscript>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-          navigator.serviceWorker.register('/sw.js');
-        }
-    </script>
-    
+    <!-- The brand line and the stats, top left. Three quick taps on the name
+         do something on a touch screen; it is not said what. -->
+    <header id="hudLeft" class="hud-left">
+        <h1 id="brand" class="brand">
+            <img src="/XSG-192.png" alt="" width="30" height="30">
+            <span>Snake Game</span>
+        </h1>
+        <div id="hudStats" class="hud-stats" role="group" aria-label="Game stats"></div>
+    </header>
+
+    <div class="hud-right">
+        <div class="hud-pause">
+            <button id="pauseBtn" class="glass-btn pause-btn" type="button" aria-label="Pause" title="Pause" aria-keyshortcuts="Space">
+                <span data-icon="pause"></span>
+            </button>
+        </div>
+
+        <!-- The edge tray (edge-tray-spec.md). Slides off the right edge,
+             leaving the arrow tab. -->
+        <div id="tray" class="tray">
+            <button id="trayTab" class="tray-tab" type="button" aria-controls="trayButtons" aria-expanded="true" aria-label="Hide menu" title="Hide menu">
+                <span data-icon="chevron"></span>
+            </button>
+            <div id="trayButtons" class="tray-buttons">
+                <button id="boardBtn" class="glass-btn" type="button" aria-haspopup="dialog" aria-label="Leaderboard" title="Leaderboard">
+                    <span data-icon="trophy"></span>
+                </button>
+                <button id="partyBtn" class="glass-btn" type="button" aria-haspopup="dialog" aria-label="Play with others" title="Play with others">
+                    <span data-icon="users"></span>
+                </button>
+                <button id="settingsBtn" class="glass-btn" type="button" aria-haspopup="dialog" aria-label="Settings" title="Settings">
+                    <span data-icon="settings"></span>
+                </button>
+                <button id="themeBtn" class="glass-btn" type="button" aria-haspopup="dialog" aria-label="Theme" title="Theme">
+                    <span data-icon="sun"></span>
+                </button>
+                <button id="fullBtn" class="glass-btn" type="button" aria-label="Full screen" title="Full screen">
+                    <span data-icon="expand"></span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- A watcher's tools in a party game. -->
+    <section id="toolDock" class="tool-dock glass" aria-label="Watcher's tools" hidden>
+        <button class="tool-btn" type="button" data-tool="across" aria-pressed="true">
+            <span data-icon="wallAcross"></span><span>Wall</span><span class="tool-wait"></span>
+        </button>
+        <button class="tool-btn" type="button" data-tool="down" aria-pressed="false">
+            <span data-icon="wallDown"></span><span>Wall</span><span class="tool-wait"></span>
+        </button>
+        <button class="tool-btn" type="button" data-tool="fruit" aria-pressed="false">
+            <span data-icon="fruit"></span><span>Fruit</span><span class="tool-wait"></span>
+        </button>
+    </section>
+
+    <!-- The pre-game screen. Overlays use their own class, not
+         .modal-backdrop, so ui.js never counts them as an open window. -->
+    <div class="overlay hidden" id="startOverlay">
+        <div class="modal glass panel start-panel" role="dialog" aria-modal="true" aria-labelledby="startTitle">
+            <h2 id="startTitle">Snake Game</h2>
+            <!-- One card per edition, js/game.js EDITIONS. Shown once there is more than one. -->
+            <div id="editionList" class="edition-list" role="radiogroup" aria-label="Edition" hidden></div>
+
+            <form id="startForm" class="start-form" autocomplete="off">
+                <label class="start-label" for="startLevel">Start at level</label>
+                <div class="level-row">
+                    <div id="levelChips" class="level-chips" role="group" aria-label="Quick levels">
+                        <button class="chip" type="button" data-level="0" aria-pressed="true">0</button>
+                        <button class="chip" type="button" data-level="10" aria-pressed="false">10</button>
+                        <button class="chip" type="button" data-level="20" aria-pressed="false">20</button>
+                        <button class="chip" type="button" data-level="30" aria-pressed="false">30</button>
+                    </div>
+                    <input id="startLevel" class="field level-input" type="number" inputmode="numeric" min="0" max="30" step="1" value="0"
+                        aria-describedby="levelNote">
+                </div>
+                <p id="levelNote" class="submit-note">Higher levels move faster and score more for every fruit.</p>
+
+                <label class="start-label" for="startSeed">Seed</label>
+                <input id="startSeed" class="field seed-input" type="text" placeholder="Random, or paste one" maxlength="24"
+                    autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+
+                <p class="start-summary"><span id="startSummary"></span>
+                    <button id="startSettingsBtn" class="link-btn" type="button">Change</button></p>
+                <p id="startMsg" class="submit-msg" role="status" aria-live="polite"></p>
+
+                <div class="panel-actions">
+                    <button id="playBtn" class="btn btn-primary pill big" type="submit"><span data-icon="play"></span>Play</button>
+                    <button id="startPartyBtn" class="btn btn-quiet pill big" type="button"><span data-icon="users"></span>Play with others</button>
+                </div>
+            </form>
+            <p class="keys-legend">
+                <span class="kbd-only"><kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>
+                    to steer, <kbd>Space</kbd> to pause.</span>
+                <span class="touch-only">Swipe on the board to steer, or tap one of its edges.</span>
+                The edges wrap round to the other side.
+            </p>
+            <a class="coffee-link" href="https://donate.stripe.com/28o2akeAr3hv0DK6oo" target="_blank" rel="noopener noreferrer">
+                <span data-icon="coffee"></span>Buy Augy a Coffee
+            </a>
+        </div>
+    </div>
+
+    <!-- Paused -->
+    <div class="overlay hidden" id="pauseOverlay">
+        <div class="modal glass panel" role="dialog" aria-modal="true" aria-labelledby="pauseTitle">
+            <h2 id="pauseTitle">Paused</h2>
+            <p class="party-only">The game is paused for everybody.</p>
+            <div class="panel-actions">
+                <button id="continueBtn" class="btn btn-primary pill" type="button" aria-keyshortcuts="Space">
+                    <span data-icon="play"></span>Continue
+                </button>
+                <button id="restartBtn" class="btn btn-quiet pill solo-only" type="button" aria-keyshortcuts="F1">
+                    <span data-icon="refresh"></span>Restart
+                </button>
+                <button id="pauseNewBtn" class="btn btn-quiet pill solo-only" type="button">
+                    <span data-icon="home"></span>New game
+                </button>
+            </div>
+            <p class="seed-line">
+                Seed <code class="seed-code"></code>
+                <button class="btn btn-quiet pill" type="button" data-copy-seed><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </p>
+            <p class="keys-legend solo-only kbd-only"><kbd>Space</kbd> pause, <kbd>F1</kbd> restart.</p>
+        </div>
+    </div>
+
+    <!-- Game over -->
+    <div class="overlay hidden" id="gameOverOverlay">
+        <div class="modal glass panel" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+            <h2 id="gameOverTitle">Game over</h2>
+            <p id="overCause" class="over-cause"></p>
+            <div id="partyResults"></div>
+            <dl class="final-stats">
+                <div><dt>Score</dt><dd id="finalScore">0</dd></div>
+                <div><dt>Level</dt><dd id="finalLevel">0</dd></div>
+                <div><dt>Length</dt><dd id="finalLength">3</dd></div>
+                <div><dt>Time</dt><dd id="finalTime">0:00</dd></div>
+            </dl>
+            <p class="seed-line">
+                Seed <code class="seed-code"></code>
+                <button class="btn btn-quiet pill" type="button" data-copy-seed><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </p>
+
+            <form id="submitForm" class="submit" autocomplete="off">
+                <label for="nameInput" class="submit-label">Add this game to the leaderboard</label>
+                <div class="guess">
+                    <input id="nameInput" class="field" type="text" placeholder="Your name" maxlength="20"
+                        autocomplete="nickname" spellcheck="false" enterkeyhint="done">
+                    <button id="submitBtn" class="btn btn-primary" type="submit">Add</button>
+                </div>
+                <p id="submitMsg" class="submit-msg" role="status" aria-live="polite"></p>
+                <p class="submit-note">Names are shared: anyone who picks the same one shares its entry.</p>
+            </form>
+            <p id="submitUnavailable" class="submit-note hidden"></p>
+            <div id="submitted" class="submitted hidden" role="status">
+                <span class="ok-icon" data-icon="check"></span>
+                <p id="submittedText"></p>
+            </div>
+
+            <div class="panel-actions">
+                <button id="playAgainBtn" class="btn btn-primary pill" type="button" aria-keyshortcuts="Space">
+                    <span data-icon="refresh"></span>Play again
+                </button>
+                <button id="lobbyBtn" class="btn btn-primary pill hidden" type="button">
+                    <span data-icon="users"></span>Back to the party
+                </button>
+                <button id="replayBtn" class="btn btn-quiet pill" type="button">
+                    <span data-icon="replay"></span>Watch replay
+                </button>
+                <button id="shareBtn" class="btn btn-quiet pill" type="button">
+                    <span data-icon="share"></span>Share replay
+                </button>
+                <button id="resultBoardBtn" class="btn btn-quiet pill" type="button">
+                    <span data-icon="trophy"></span>Leaderboard
+                </button>
+                <button id="newGameBtn" class="btn btn-quiet pill" type="button">
+                    <span data-icon="home"></span>New game
+                </button>
+            </div>
+            <p id="shareMsg" class="submit-msg ok-msg" role="status" aria-live="polite"></p>
+            <div id="shareLinkRow" class="guess" hidden>
+                <label for="shareLink" class="visually-hidden">Replay link</label>
+                <input id="shareLink" class="field" type="text" readonly>
+                <button id="copyLinkBtn" class="btn btn-quiet" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+            </div>
+            <a class="coffee-link" href="https://donate.stripe.com/28o2akeAr3hv0DK6oo" target="_blank" rel="noopener noreferrer">
+                <span data-icon="coffee"></span>Buy Augy a Coffee
+            </a>
+        </div>
+    </div>
+
+    <!-- Instant replay, of the game just finished or a shared one. -->
+    <section id="replayBar" class="replay-bar glass" aria-label="Replay" hidden>
+        <p id="replayNote" class="replay-note" hidden></p>
+        <div class="replay-head">
+            <p id="replayCaption" class="replay-caption"></p>
+            <span id="replayTime" class="replay-time"></span>
+        </div>
+        <div class="replay-track">
+            <!-- A tick for each fruit eaten. -->
+            <div id="replayMarks" class="replay-marks" aria-hidden="true"></div>
+            <input id="replaySeek" class="replay-seek" type="range" min="0" max="0" step="1" value="0" aria-label="Replay position">
+        </div>
+        <div class="replay-controls">
+            <div class="mode-toggle replay-speed" id="replaySpeed" role="radiogroup" aria-label="Replay speed">
+                <button class="mode-btn" type="button" role="radio" aria-checked="false" data-speed="0.5">0.5×</button>
+                <button class="mode-btn active" type="button" role="radio" aria-checked="true" data-speed="1">1×</button>
+                <button class="mode-btn" type="button" role="radio" aria-checked="false" data-speed="2">2×</button>
+                <button class="mode-btn" type="button" role="radio" aria-checked="false" data-speed="4">4×</button>
+            </div>
+            <div class="replay-steps">
+                <button id="replayBack" class="glass-btn small" type="button" aria-label="Back a move" title="Back a move" aria-keyshortcuts="ArrowLeft">
+                    <span data-icon="stepBack"></span>
+                </button>
+                <button id="replayPlay" class="glass-btn" type="button" aria-label="Pause replay" aria-keyshortcuts="Space"></button>
+                <button id="replayForward" class="glass-btn small" type="button" aria-label="Forward a move" title="Forward a move" aria-keyshortcuts="ArrowRight">
+                    <span data-icon="stepForward"></span>
+                </button>
+            </div>
+            <div class="replay-ends">
+                <button id="replaySeedBtn" class="btn btn-quiet pill hidden" type="button">Play this seed</button>
+                <button id="replayClose" class="btn btn-quiet pill" type="button" aria-keyshortcuts="Escape">
+                    <span data-icon="close"></span>Done
+                </button>
+            </div>
+        </div>
+        <p class="keys-legend replay-keys">
+            <kbd>Space</kbd> play or pause, <kbd>&larr;</kbd> <kbd>&rarr;</kbd> a move back or on, <kbd>Esc</kbd> done.
+        </p>
+    </section>
+
+    <!-- Leaderboard modal -->
+    <div class="modal-backdrop hidden" id="boardModal">
+        <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="boardModalTitle">
+            <div class="modal-head">
+                <h2 id="boardModalTitle">Leaderboard</h2>
+                <button class="icon-btn small" type="button" data-close-modal="boardModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <div class="mode-toggle" id="boardTabs" role="tablist" aria-label="Board">
+                <button class="mode-btn" type="button" role="tab" data-board="best" aria-selected="true" aria-controls="boardBody">Best score</button>
+                <button class="mode-btn" type="button" role="tab" data-board="total" aria-selected="false" aria-controls="boardBody">Total points</button>
+            </div>
+            <div id="boardBody" class="board-body" role="tabpanel"></div>
+            <p id="boardNote" class="mode-note"></p>
+            <p class="mode-note">Anyone who picks the same name shares its entry. Every game is played through again on the server before it counts.</p>
+        </div>
+    </div>
+
+    <!-- Settings modal -->
+    <div class="modal-backdrop hidden" id="settingsModal">
+        <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+            <div class="modal-head">
+                <h2 id="settingsModalTitle">Settings</h2>
+                <button class="icon-btn small" type="button" data-close-modal="settingsModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+
+            <p class="modal-section-label">Leaderboard name</p>
+            <p id="savedName" class="saved-name"></p>
+            <form id="nameForm" class="guess" autocomplete="off">
+                <label for="settingsName" class="visually-hidden">New leaderboard name</label>
+                <input id="settingsName" class="field" type="text" placeholder="New name" maxlength="20"
+                    autocomplete="nickname" spellcheck="false" enterkeyhint="done">
+                <button id="saveNameBtn" class="btn btn-primary" type="submit">Save</button>
+            </form>
+            <p id="nameMsg" class="mode-note" role="status" aria-live="polite"></p>
+            <button id="clearNameBtn" class="btn btn-quiet pill clear-name" type="button">Clear name</button>
+
+            <p class="modal-section-label">Games</p>
+            <button class="setting-toggle" type="button" role="switch" aria-checked="false" data-setting="auto_submit">
+                <span>Add finished games automatically</span>
+                <span class="switch-state"></span><span class="switch" aria-hidden="true"></span>
+            </button>
+            <p id="autoNote" class="mode-note">Save a name first to add games automatically.</p>
+
+            <p class="modal-section-label">Difficulty</p>
+            <div class="mode-toggle thirds" id="difficultyToggle">
+                <button class="mode-btn" type="button" data-difficulty="easy" aria-pressed="false">Easy</button>
+                <button class="mode-btn" type="button" data-difficulty="normal" aria-pressed="false">Normal</button>
+                <button class="mode-btn" type="button" data-difficulty="hard" aria-pressed="false">Hard</button>
+            </div>
+
+            <p class="modal-section-label">Game time limit</p>
+            <div class="mode-toggle quarters" id="gameLimitToggle">
+                <button class="mode-btn" type="button" data-game="0" aria-pressed="false">None</button>
+                <button class="mode-btn" type="button" data-game="300" aria-pressed="false">5 min</button>
+                <button class="mode-btn" type="button" data-game="180" aria-pressed="false">3 min</button>
+                <button class="mode-btn" type="button" data-game="60" aria-pressed="false">1 min</button>
+            </div>
+
+            <p class="modal-section-label">Fruit timer</p>
+            <div class="mode-toggle quarters" id="fruitLimitToggle">
+                <button class="mode-btn" type="button" data-fruit="0" aria-pressed="false">None</button>
+                <button class="mode-btn" type="button" data-fruit="15" aria-pressed="false">15 s</button>
+                <button class="mode-btn" type="button" data-fruit="10" aria-pressed="false">10 s</button>
+                <button class="mode-btn" type="button" data-fruit="5" aria-pressed="false">5 s</button>
+            </div>
+            <p id="scoringNote" class="mode-note"></p>
+
+            <p class="mode-note">
+                Hard moves faster and scores half as much again; Easy is slower and scores less. A time limit
+                ends the game when it runs out, and a fruit timer moves any fruit you do not reach in time. Both
+                add to the points. Changes count from the next game. Settings are kept in this browser.
+            </p>
+        </div>
+    </div>
+
+    <!-- Party modal -->
+    <div class="modal-backdrop hidden" id="partyModal">
+        <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="partyModalTitle">
+            <div class="modal-head">
+                <h2 id="partyModalTitle">Play with others</h2>
+                <button class="icon-btn small" type="button" data-close-modal="partyModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+
+            <section id="partyChoose" class="party-view">
+                <p class="mode-note">
+                    Everyone has to be on the same network: the same wifi, or a hotspot on one device that the others join.
+                    Up to four play, together or against each other, and anyone else watches and can drop walls in the way
+                    or extra fruit.
+                </p>
+                <button id="hostBtn" class="btn btn-primary pill big" type="button"><span data-icon="users"></span>Host a game</button>
+                <p class="modal-section-label">Or join one</p>
+                <form id="joinForm" class="guess" autocomplete="off">
+                    <label for="joinCode" class="visually-hidden">Party code</label>
+                    <input id="joinCode" class="field code-input" type="text" placeholder="Code" maxlength="8"
+                        autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+                    <button class="btn btn-quiet" type="submit">Join</button>
+                </form>
+                <p id="partyMsg" class="mode-note" role="status" aria-live="polite"></p>
+            </section>
+
+            <section id="partyHost" class="party-view" hidden>
+                <p class="party-code" id="hostCode" aria-label="Party code"></p>
+                <div id="hostQr" class="party-qr"></div>
+                <p class="party-link">
+                    <span id="hostLink"></span>
+                    <button id="copyJoinBtn" class="btn btn-quiet pill" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+                </p>
+                <p id="hostStatus" class="mode-note" role="status" aria-live="polite"></p>
+                <p class="modal-section-label">Game</p>
+                <div class="mode-toggle" id="partyModeToggle">
+                    <button class="mode-btn" type="button" data-party-mode="coop" aria-pressed="true">Together</button>
+                    <button class="mode-btn" type="button" data-party-mode="versus" aria-pressed="false">Against each other</button>
+                </div>
+                <p class="modal-section-label">You</p>
+                <div class="mode-toggle" id="hostRoleToggle">
+                    <button class="mode-btn" type="button" data-role="play" aria-pressed="true"><span data-icon="snake"></span>Play</button>
+                    <button class="mode-btn" type="button" data-role="watch" aria-pressed="false"><span data-icon="eye"></span>Watch</button>
+                </div>
+                <p class="modal-section-label">In the party</p>
+                <ul id="hostPeople" class="party-people"></ul>
+                <p id="hostCount" class="mode-note"></p>
+                <div class="panel-actions">
+                    <button id="partyStartBtn" class="btn btn-primary pill" type="button"><span data-icon="play"></span>Start</button>
+                    <button id="newCodeBtn" class="btn btn-quiet pill" type="button">New code</button>
+                    <button id="stopHostBtn" class="btn btn-quiet pill" type="button">Stop hosting</button>
+                </div>
+                <p class="mode-note">
+                    Together, everyone shares one score and snakes pass through each other. Against each other, snakes
+                    block each other and the last one in wins. Your difficulty and time limits apply. Party games stay off
+                    the leaderboard.
+                </p>
+            </section>
+
+            <section id="partyGuest" class="party-view" hidden>
+                <p id="guestStatus" class="party-status" role="status" aria-live="polite"></p>
+                <p id="guestMode" class="saved-name"></p>
+                <p class="modal-section-label">You</p>
+                <div class="mode-toggle" id="guestRoleToggle">
+                    <button class="mode-btn" type="button" data-role="play" aria-pressed="true"><span data-icon="snake"></span>Play</button>
+                    <button class="mode-btn" type="button" data-role="watch" aria-pressed="false"><span data-icon="eye"></span>Watch</button>
+                </div>
+                <p class="modal-section-label">In the party</p>
+                <ul id="guestPeople" class="party-people"></ul>
+                <div class="panel-actions">
+                    <button id="reconnectBtn" class="btn btn-primary pill" type="button" hidden>Reconnect</button>
+                    <button id="leaveBtn" class="btn btn-quiet pill" type="button">Leave</button>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- Theme picker modal -->
+    <div class="modal-backdrop hidden" id="themeModal">
+        <div class="modal glass" role="dialog" aria-modal="true" aria-labelledby="themeModalTitle">
+            <div class="modal-head">
+                <h2 id="themeModalTitle">Theme</h2>
+                <button class="icon-btn small" type="button" data-close-modal="themeModal" aria-label="Close">
+                    <span data-icon="close"></span>
+                </button>
+            </div>
+            <p class="modal-section-label">Mode</p>
+            <div class="mode-toggle" id="modeToggle">
+                <button class="mode-btn" type="button" data-mode="light" aria-pressed="false"><span data-icon="sun"></span>Light</button>
+                <button class="mode-btn" type="button" data-mode="dark" aria-pressed="false"><span data-icon="moon"></span>Dark</button>
+                <button class="mode-btn mode-btn-wide" type="button" data-mode="time" aria-pressed="false"><span data-icon="clock"></span>Time-based</button>
+            </div>
+            <p class="mode-note" id="modeNote" hidden></p>
+            <p class="modal-section-label">Brand colour</p>
+            <div class="swatch-grid" id="swatchGrid"></div>
+        </div>
+    </div>
+
+    <script type="module" src="/js/app.js"></script>
 </body>
 
 </html>

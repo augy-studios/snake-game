@@ -1,0 +1,10 @@
+{
+  "name": "uwusnek",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Snake Game: the PWA and its leaderboard and replay API, deployed on Vercel.",
+  "engines": {
+    "node": ">=18"
+  }
+}

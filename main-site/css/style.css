@@ -493,6 +493,15 @@ body:has(.tool-dock:not([hidden])) .stage-note { bottom: calc(max(10px, env(safe
   border: 2px solid var(--bg);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+/* Scrubbing takes the drag for itself, not the page. */
+.replay-seek { touch-action: none; }
+/* A thumb a finger can find, on a track a finger can hit. */
+@media (pointer: coarse) {
+  .replay-track, .replay-seek, .replay-seek::-webkit-slider-runnable-track { height: 36px; }
+  .replay-seek::-webkit-slider-thumb { width: 26px; height: 26px; margin-top: 5px; }
+  .replay-seek::-moz-range-thumb { width: 26px; height: 26px; }
+  .replay-marks { left: 13px; right: 13px; }
+}
 
 .replay-controls {
   display: grid;

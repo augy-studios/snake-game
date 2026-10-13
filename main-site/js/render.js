@@ -66,9 +66,6 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// Whether two body cells sit side by side on the board, not across an edge.
-const touching = (a, b) => Math.abs(a[0] - b[0]) + Math.abs(a[1] - b[1]) === 1;
-
 // The board under everything: its fill, the faint checks so a cell's place
 // reads at a glance, and a dashed rim saying the edges wrap round. 1,600
 // cells is too many to fill on every frame, so it is drawn once into a
@@ -105,7 +102,9 @@ function boardBackdrop(size, grid, palette, dpr) {
   return canvas;
 }
 
-export function drawBoard(ctx, size, view, palette, { dpr = 1, pulse = 0, hints = false, highlight = null } = {}) {
+// `motion`, when given, is one entry per snake for smooth movement between
+// moves: { t, dir, grows }, see bodyPath.
+export function drawBoard(ctx, size, view, palette, { dpr = 1, pulse = 0, hints = false, highlight = null, motion = null } = {}) {
   const { grid } = view;
   const cell = size / grid;
   ctx.clearRect(0, 0, size, size);
@@ -125,7 +124,7 @@ export function drawBoard(ctx, size, view, palette, { dpr = 1, pulse = 0, hints 
   }
 
   for (const f of view.fruits) drawFruit(ctx, f, cell, palette, view, pulse);
-  view.snakes.forEach((s, i) => drawSnake(ctx, s, cell, palette.snakes[i % 4], palette, view.snakes.length > 1));
+  view.snakes.forEach((s, i) => drawSnake(ctx, s, cell, palette.snakes[i % 4], palette, view.snakes.length > 1, grid, motion?.[i]));
 
   if (highlight) {
     // A watcher's aim: where the wall or fruit would land.
@@ -169,51 +168,107 @@ function drawFruit(ctx, f, cell, palette, view, pulse) {
   }
 }
 
-function drawSnake(ctx, s, cell, color, palette, party) {
-  if (!s.body.length) return;
-  // Out, it fades into the board. An opaque mix, not transparency, so the
-  // overlapping segments and bridges do not show through each other.
-  const alpha = 1;
-  const inset = cell * 0.1;
-  const size = cell - inset * 2;
-  ctx.fillStyle = rgba(s.alive ? color : mix(color, palette.board, party ? 0.3 : 0.5));
-
-  // Each segment, bridged to the one before when they are side by side, so
-  // the body reads as one piece; across an edge it simply leaves and comes back.
-  for (let i = s.body.length - 1; i >= 0; i -= 1) {
-    const [x, y] = s.body[i];
-    const shrink = i === s.body.length - 1 && s.body.length > 2 ? cell * 0.08 : 0;
-    roundRect(ctx, x * cell + inset + shrink, y * cell + inset + shrink, size - shrink * 2, size - shrink * 2, cell * 0.28);
-    ctx.fill();
-    if (i > 0 && touching(s.body[i], s.body[i - 1])) {
-      const [px, py] = s.body[i - 1];
-      const bx = Math.min(x, px) * cell + inset;
-      const by = Math.min(y, py) * cell + inset;
-      ctx.fillRect(bx + (x !== px ? size / 2 : 0), by + (y !== py ? size / 2 : 0), x !== px ? cell : size, y !== py ? cell : size);
+// The body as one unbroken path through the cell centres, in board units,
+// with wrapping undone: each point is moved by whole boards to sit next to
+// the one before it, so a snake crossing an edge is a straight line that
+// runs off the board. drawSnake draws it again shifted by a board wherever
+// it ran off, so it comes back on the other side.
+//
+// `motion` moves it on between moves: the head is `t` of the way into the
+// cell it is heading for, and the tail `t` of the way out of its cell
+// unless the snake is growing. Ahead of the game rather than behind it, so
+// smooth movement adds no lag; a turn bends the head the moment it is made.
+function bodyPath(s, grid, motion) {
+  const pts = [];
+  let px = 0;
+  let py = 0;
+  s.body.forEach(([x, y], i) => {
+    let ux = x + 0.5;
+    let uy = y + 0.5;
+    if (i > 0) {
+      ux += Math.round((px - ux) / grid) * grid;
+      uy += Math.round((py - uy) / grid) * grid;
+    }
+    pts.push([ux, uy]);
+    px = ux;
+    py = uy;
+  });
+  const t = motion?.t ?? 0;
+  if (t > 0 && motion.dir >= 0) {
+    const [dx, dy] = DIRS[motion.dir];
+    pts.unshift([pts[0][0] + dx * t, pts[0][1] + dy * t]);
+    if (!motion.grows && pts.length > 2) {
+      const [tx, ty] = pts[pts.length - 1];
+      const [nx, ny] = pts[pts.length - 2];
+      pts[pts.length - 1] = [tx + (nx - tx) * t, ty + (ny - ty) * t];
     }
   }
+  return pts;
+}
 
-  // Eyes on the head, looking the way it is going.
-  const [hx, hy] = s.body[0];
-  const dir = s.dir >= 0 ? s.dir : 1;
-  const [dx, dy] = DIRS[dir];
-  const cx = (hx + 0.5) * cell + dx * cell * 0.12;
-  const cy = (hy + 0.5) * cell + dy * cell * 0.12;
-  const side = cell * 0.2;
+function drawSnake(ctx, s, cell, color, palette, party, grid, motion) {
+  if (!s.body.length) return;
+  // Out, it fades into the board: an opaque mix, so nothing shows through.
+  const fill = rgba(s.alive ? color : mix(color, palette.board, party ? 0.3 : 0.5));
+  const pts = bodyPath(s, grid, s.alive ? motion : null);
+  const width = cell * 0.78;
+
+  // The copies needed to bring back whatever ran off an edge.
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const [x, y] of pts) {
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+  const shiftsX = [];
+  for (let k = Math.floor((minX - 1) / grid); k <= Math.floor((maxX + 1) / grid); k += 1) shiftsX.push(-k * grid);
+  const shiftsY = [];
+  for (let k = Math.floor((minY - 1) / grid); k <= Math.floor((maxY + 1) / grid); k += 1) shiftsY.push(-k * grid);
+
+  const head = pts[0];
+  const [dx, dy] = DIRS[motion?.dir >= 0 && s.alive ? motion.dir : s.dir >= 0 ? s.dir : 1];
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  for (const ox of shiftsX) {
+    for (const oy of shiftsY) {
+      ctx.beginPath();
+      if (pts.length === 1) {
+        ctx.arc((head[0] + ox) * cell, (head[1] + oy) * cell, width / 2, 0, Math.PI * 2);
+        ctx.fillStyle = fill;
+        ctx.fill();
+      } else {
+        pts.forEach(([x, y], i) => (i ? ctx.lineTo((x + ox) * cell, (y + oy) * cell) : ctx.moveTo((x + ox) * cell, (y + oy) * cell)));
+        ctx.lineWidth = width;
+        ctx.strokeStyle = fill;
+        ctx.stroke();
+      }
+      drawEyes(ctx, (head[0] + ox) * cell, (head[1] + oy) * cell, dx, dy, cell, palette, s.alive);
+    }
+  }
+}
+
+// Eyes on the head, looking the way it is going; crossed once it is out.
+function drawEyes(ctx, hx, hy, dx, dy, cell, palette, alive) {
+  const cx = hx + dx * cell * 0.1;
+  const cy = hy + dy * cell * 0.1;
+  const side = cell * 0.19;
   for (const k of [-1, 1]) {
-    const ex = cx + -dy * side * k;
+    const ex = cx - dy * side * k;
     const ey = cy + dx * side * k;
     ctx.beginPath();
     ctx.arc(ex, ey, cell * 0.13, 0, Math.PI * 2);
-    ctx.fillStyle = rgba(palette.page, alpha);
+    ctx.fillStyle = rgba(palette.page);
     ctx.fill();
-    if (s.alive) {
+    if (alive) {
       ctx.beginPath();
       ctx.arc(ex + dx * cell * 0.04, ey + dy * cell * 0.04, cell * 0.065, 0, Math.PI * 2);
       ctx.fillStyle = rgba(palette.ink);
       ctx.fill();
     } else {
-      // Out: crossed eyes.
       ctx.strokeStyle = rgba(palette.ink, 0.8);
       ctx.lineWidth = Math.max(1, cell * 0.05);
       const d = cell * 0.06;

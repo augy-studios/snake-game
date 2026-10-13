@@ -26,6 +26,7 @@ import {
   newGame,
   step,
   summary,
+  tickMs,
 } from "./rules.js";
 import { cleanSeed, makeSeed } from "./seed.js";
 import { describeSettings, gameSettings, getSettings, openSettings, saveSettings } from "./settings.js";
@@ -94,9 +95,12 @@ export function initGame(hooks = {}) {
 
   /* ---- Layout ----
      The board is the largest square that fits clear of the floating
-     controls: beside them on a wide screen, under them on a tall one. The
-     tray keeps a strip clear down the right only while it is open, per
-     edge-tray-spec.md; collapsed, only its tab's width is kept. */
+     controls, centred on the screen wherever that costs little. Each control
+     is its own obstacle: the stats top left, and on the right the pause
+     button, the tray's tab and, while the tray is open, its column of
+     buttons. So on a phone the board can sit under the stats beside the
+     slim column, and where the tray is collapsed, under the stats at the
+     full width (edge-tray-spec.md, 5.1). */
 
   const probe = document.createElement("div");
   probe.style.cssText =
@@ -113,6 +117,35 @@ export function initGame(hooks = {}) {
     });
   }
 
+  // Where the right hand controls will be once the tray has finished
+  // moving. Worked out from offsets, which ignore the slide's transform, so
+  // a layout run while the tray is still sliding lands where it ends up.
+  function rightObstacles() {
+    const right = document.querySelector(".hud-right");
+    const rr = right.getBoundingClientRect();
+    // Offsets up to .hud-right itself, whichever ancestors count on the way.
+    const at = (el) => {
+      let x = 0;
+      let y = 0;
+      for (let n = el; n && n !== right; n = n.offsetParent) {
+        x += n.offsetLeft;
+        y += n.offsetTop;
+      }
+      return { x, y };
+    };
+    const box = (el, dx = 0) => {
+      const { x, y } = at(el);
+      return { left: rr.left + x + dx, top: rr.top + y, right: rr.left + x + el.offsetWidth + dx, bottom: rr.top + y + el.offsetHeight };
+    };
+    const tray = $("tray");
+    const buttons = $("trayButtons");
+    const open = !tray.classList.contains("collapsed");
+    const shift = buttons.offsetWidth + 8 + (parseFloat(getComputedStyle(buttons).marginRight) || 0);
+    const list = [box(document.querySelector(".hud-pause")), box($("trayTab"), open ? 0 : shift)];
+    if (open) list.push(box(buttons));
+    return list;
+  }
+
   function layout() {
     const vv = window.visualViewport;
     const vw = vv ? vv.width : window.innerWidth;
@@ -126,46 +159,72 @@ export function initGame(hooks = {}) {
     };
     const notice = document.querySelector(".update-notice")?.offsetHeight ?? 0;
     const pad = vw <= 480 ? 10 : 16;
+    const gap = 8;
     const top0 = Math.max(notice, safe.top) + pad;
 
-    const hud = $("hudLeft").getBoundingClientRect();
-    const hudW = hud.right + pad;
-    const hudBottom = hud.bottom + 8;
-    const trayOpen = !$("tray").classList.contains("collapsed");
-    const btn = vw <= 480 ? 40 : 44;
-    const edge = (vw <= 480 ? 10 : 16) + safe.right;
-    const rightW = trayOpen ? 24 + 8 + btn + edge + 8 : 24 + 10 + safe.right;
-
     let bottom = pad + safe.bottom;
-    if (!replayBar.hidden) bottom = Math.max(bottom, vh - replayBar.getBoundingClientRect().top + 8);
-    if (!$("toolDock").hidden) bottom = Math.max(bottom, vh - $("toolDock").getBoundingClientRect().top + 8);
+    if (!replayBar.hidden) bottom = Math.max(bottom, vh - replayBar.getBoundingClientRect().top + gap);
+    if (!$("toolDock").hidden) bottom = Math.max(bottom, vh - $("toolDock").getBoundingClientRect().top + gap);
+    const floor = vh - bottom;
 
-    // Three ways to fit it, and the largest wins. Beside: centred, clear of
-    // the stats on the left and the tray on the right, for a wide screen.
-    const side = Math.max(hudW, rightW);
-    const options = [];
-    const beside = Math.min(vh - top0 - bottom, vw - side * 2);
-    options.push({ size: beside, left: (vw - beside) / 2, top: top0, room: vh - top0 - bottom });
-    // Under the stats, clear of the tray's column on the right.
-    const underTop = Math.max(top0, hudBottom);
-    const from = pad + safe.left;
-    const under = Math.min(vh - underTop - bottom, vw - from - rightW);
-    options.push({ size: under, left: from + Math.max(0, (vw - rightW - from - under) / 2), top: underTop, room: vh - underTop - bottom });
-    // Under everything, the tray included, at the full width: a tall phone,
-    // where the tray's column ends well above the foot of the screen.
-    const trayBottom = (trayOpen ? $("tray") : $("trayTab")).getBoundingClientRect().bottom + 8;
-    const belowTop = Math.max(underTop, trayBottom);
-    const below = Math.min(vh - belowTop - bottom, vw - from - pad - safe.right);
-    options.push({ size: below, left: (vw - below) / 2, top: belowTop, room: vh - belowTop - bottom });
+    const hud = $("hudLeft").getBoundingClientRect();
+    const obstacles = [{ left: hud.left, top: hud.top, right: hud.right, bottom: hud.bottom }, ...rightObstacles()];
+    const minL = pad + safe.left;
+    const maxR = vw - pad - safe.right;
 
-    const best = options.reduce((a, b) => (b.size > a.size ? b : a));
-    // A third of the spare height above it, so it sits a little high, where
-    // the eye already is.
+    // The room a board starting at `top` has across, given whatever beside
+    // it reaches down into its height; tried until it settles, since a
+    // smaller board reaches past fewer controls.
+    function fit(top) {
+      let size = floor - top;
+      let L = minL;
+      let R = maxR;
+      for (let i = 0; i < 4; i += 1) {
+        L = minL;
+        R = maxR;
+        for (const o of obstacles) {
+          if (o.bottom + gap <= top || o.top - gap >= top + size) continue;
+          if ((o.left + o.right) / 2 > vw / 2) R = Math.min(R, o.left - gap);
+          else L = Math.max(L, o.right + gap);
+        }
+        size = Math.min(floor - top, R - L);
+      }
+      // Centred if it can be: a board pushed to one side by a few pixels
+      // looks wrong, so a centred one may be a little smaller.
+      const half = Math.min(vw / 2 - L, R - vw / 2);
+      const centred = Math.min(size, half * 2);
+      return [
+        { top, size, left: L + Math.max(0, (R - L - size) / 2) },
+        { top, size: centred, left: (vw - centred) / 2 },
+      ];
+    }
+
+    const tops = [top0, ...obstacles.map((o) => o.bottom + gap)].filter((t) => t >= top0 && t < floor - GRID * 4);
+    const options = tops.flatMap(fit).filter((o) => o.size > 0);
+
+    // Each option as evenly placed as it can be: as much empty space above
+    // it, from the stats down, as below it, but never higher than where it
+    // starts, since above that something is in its way.
+    const anchor = Math.max(top0, hud.bottom + gap);
+    for (const o of options) {
+      const from = Math.min(anchor, o.top);
+      o.y = Math.min(floor - o.size, Math.max(o.top, (from + floor - o.size) / 2));
+    }
+    // The biggest, less what makes it look misplaced: three times how far off
+    // centre it sits, and most of how much more empty space there is above
+    // it than below, or below than above. That keeps a phone's board
+    // from sliding to the foot of the screen under the tray for a few
+    // pixels more width.
+    const score = (o) =>
+      o.size -
+      3 * Math.abs(o.left + o.size / 2 - vw / 2) -
+      Math.abs(o.y - Math.min(anchor, o.top) - (floor - o.y - o.size)) * 0.6;
+    const best = options.reduce((a, b) => (score(b) > score(a) ? b : a), options[0] ?? { top: top0, y: top0, size: GRID * 4, left: (vw - GRID * 4) / 2 });
+
     const size = Math.max(GRID * 4, Math.floor(best.size));
-    const left = best.left;
-    const topY = best.top + Math.max(0, best.room - size) / 3;
+    const topY = best.y;
     Object.assign(canvas.style, {
-      left: `${Math.round(left)}px`,
+      left: `${Math.round(best.left)}px`,
       top: `${Math.round(topY)}px`,
       width: `${size}px`,
       height: `${size}px`,
@@ -199,6 +258,60 @@ export function initGame(hooks = {}) {
   // The board with nothing on it, behind the pre-game screen.
   const EMPTY = { grid: GRID, snakes: [], fruits: [], walls: [], timeMs: 0 };
 
+  /* ---- Smooth movement ----
+     Between moves each snake glides on: how far into the next move the
+     game is, and which way that move goes. Here, from this device's clock
+     and the turn queued next; in a replay, from the turns it already
+     knows; for a guest, from the time since the host's last snapshot. */
+
+  const unit = (v) => Math.max(0, Math.min(1, v));
+
+  function wouldTake(snake, dir) {
+    if (dir === snake.dir) return false;
+    return !(snake.moved >= 0 && snake.body.length > 1 && (dir + 2) % 4 === snake.moved);
+  }
+
+  function growsInto(view, snake, dir) {
+    if (snake.grow > 0) return true;
+    if (dir < 0 || !snake.body.length) return false;
+    const [hx, hy] = snake.body[0];
+    const x = (hx + [0, 1, 0, -1][dir] + view.grid) % view.grid;
+    const y = (hy + [-1, 0, 1, 0][dir] + view.grid) % view.grid;
+    return view.fruits.some((f) => f.x === x && f.y === y);
+  }
+
+  function motionFor(view, now) {
+    const s = session;
+    if (!s || !view || view.over) return null;
+    let t = 0;
+    let nextDir = (snake) => snake.dir;
+    if (s.kind === "local") {
+      const st = s.state;
+      if (s.paused || !st.started || s.countdownUntil) return null;
+      t = s.acc / currentTickMs(st);
+      nextDir = (snake, i) => (s.autoplay ? snake.dir : (s.queues[i] ?? []).find((d) => wouldTake(snake, d)) ?? snake.dir);
+    } else if (s.kind === "replay") {
+      if (!s.playing) return null;
+      const p = s.player;
+      t = s.acc / p.durationAt(p.tick);
+      const events = p.replay.events;
+      nextDir = (snake, i) => {
+        for (let k = p.event; k < events.length && events[k][0] === p.tick; k += 1) {
+          if (events[k][1] === 0 && events[k][2] === i && wouldTake(snake, events[k][3])) return events[k][3];
+        }
+        return snake.dir;
+      };
+    } else {
+      if (s.paused || s.countdown || !s.viewAt) return null;
+      t = (now - s.viewAt) / tickMs(view.settings.difficulty, view.level);
+    }
+    t = unit(t);
+    return view.snakes.map((snake, i) => {
+      const dir = nextDir(snake, i);
+      return { t, dir, grows: growsInto(view, snake, dir) };
+    });
+  }
+
   function draw(now) {
     const view = currentView();
     if (!view) {
@@ -212,7 +325,7 @@ export function initGame(hooks = {}) {
       const cells = tool === "fruit" ? [[aim.x, aim.y]] : [0, 1, 2].map((k) => (tool === "across" ? [(aim.x + k) % GRID, aim.y] : [aim.x, (aim.y + k) % GRID]));
       highlight = { cells, ok: canPlace(view, tool === "fruit" ? "fruit" : "wall", aim.x, aim.y, tool === "across") };
     }
-    drawBoard(ctx, boardSize, view, palette, { dpr, pulse: now / 1000, hints, highlight });
+    drawBoard(ctx, boardSize, view, palette, { dpr, pulse: now / 1000, hints, highlight, motion: motionFor(view, now) });
   }
 
   /* ---- The stats, top left ---- */
@@ -1082,6 +1195,11 @@ export function initGame(hooks = {}) {
     } else if ((key === "ArrowLeft" || key === "ArrowRight") && !on?.closest("input")) {
       e.preventDefault();
       stepReplay(key === "ArrowRight" ? 1 : -1);
+    } else if ((key === "Home" || key === "End") && !on?.closest("input")) {
+      e.preventDefault();
+      setReplayPlaying(false);
+      session.player.seek(key === "End" ? session.player.ticks : 0);
+      renderReplay();
     }
   }
 
@@ -1172,7 +1290,8 @@ export function initGame(hooks = {}) {
     }
     // Only drawn when something changed or is moving: an idle board costs
     // nothing, and a phone's battery and a busy host both feel the difference.
-    if (dirty || (view && animating(view)) || (aim && watching())) {
+    const gliding = view && motionFor(view, now) !== null;
+    if (dirty || gliding || (view && animating(view)) || (aim && watching())) {
       dirty = false;
       draw(now);
     }
@@ -1206,6 +1325,9 @@ export function initGame(hooks = {}) {
   function showRemote(view, { countdown = 0, paused = false } = {}) {
     if (!remote) return;
     remote.view = view;
+    remote.viewAt = performance.now();
+    remote.paused = paused;
+    remote.countdown = countdown;
     if (session !== remote) return;
     renderSeed(view.seed);
     setNote(countdown > 0 ? String(Math.ceil(countdown / 1000)) : paused ? "Paused by the host" : remote.watching && !view.over ? watchNote() : "");
@@ -1354,11 +1476,30 @@ export function initGame(hooks = {}) {
   // A click on a replay button leaves focus where it was, so Space goes on
   // playing and pausing rather than pressing that button again.
   replayBar.querySelectorAll("button").forEach((btn) => btn.addEventListener("pointerdown", (e) => e.preventDefault()));
-  seek.addEventListener("input", () => {
+  // Scrubbing: dragging the timeline pauses, moves the board with the
+  // thumb, and carries on playing from where it was let go if it was
+  // playing before, unless that is the end.
+  let resumeAfterScrub = false;
+  const startScrub = () => {
+    if (session?.kind !== "replay") return;
+    if (session.playing) resumeAfterScrub = true;
     setReplayPlaying(false);
+  };
+  const endScrub = () => {
+    if (session?.kind !== "replay" || !resumeAfterScrub) return;
+    resumeAfterScrub = false;
+    if (session.player.tick < session.player.ticks) setReplayPlaying(true);
+  };
+  seek.addEventListener("pointerdown", startScrub);
+  seek.addEventListener("input", () => {
+    if (session?.kind !== "replay") return;
+    if (session.playing) startScrub();
     session.player.seek(Number(seek.value));
     renderReplay();
   });
+  seek.addEventListener("change", endScrub);
+  seek.addEventListener("pointerup", endScrub);
+  seek.addEventListener("pointercancel", endScrub);
 
   // Leaving the tab pauses a game on this device, so nothing is lost.
   document.addEventListener("visibilitychange", () => {

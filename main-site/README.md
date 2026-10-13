@@ -86,8 +86,8 @@ to the leaderboard under a name, which is remembered in this browser. Two
 boards: best score, and total points. A board's best game can be watched.
 
 **Instant replay:** Watch replay plays the game back on the board, worked out
-again from its turns. Play, pause, a move back or forward (`←` `→`), drag
-the timeline, at 0.5×, 1×, 2× or 4× as Word Rain's replay does; the speed
+again from its turns. Play, pause, a move back or forward (`←` `→`), jump
+to the start or end (`Home` `End`), or drag the timeline to anywhere, at 0.5×, 1×, 2× or 4× as Word Rain's replay does; the speed
 picked last is remembered. A line says what just happened, and the timeline
 has a tick at every fruit.
 
@@ -158,8 +158,12 @@ connection is back. `/join` and `/r/<id>` are rewrites to the game page, in
 top of the page offers Reload or Not now, and nothing reloads until the
 player asks. Bump `VERSION` in `sw.js` on every change to anything here.
 
-**Lag:** the board is drawn only when a move happens or something on it
-animates, from a backdrop cached once per size and theme. Layout is worked
+**Smooth movement:** between moves each snake glides into the cell it is
+heading for, drawn as one rounded body that runs off one edge and back on
+the other. It runs ahead of the game rather than behind it, so it adds no
+delay: a turn bends the head the moment it is pressed.
+
+**Lag:** the board is redrawn only while something moves or animates, from a backdrop cached once per size and theme. Layout is worked
 out on resize, not every frame. Autoplay's search reuses its buffers. Party
 snapshots send bodies as flat coordinate lists. The canvas asks the browser
 for low latency drawing.

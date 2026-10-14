@@ -26,7 +26,7 @@ and the server always agree on a game.
 | `rules.js` | The game: board, speeds, levels, points, timers, party rules, and playing a whole game through. |
 | `seed.js` | Seeds, and the integer random numbers fruit placement draws from. |
 | `replay-format.js` | The replay format, checking it, and packing it into a link. |
-| `bot.js` | Autoplay's steering. |
+| `bot.js` | Autoplay's steering: a loop through every cell, with shortcuts that never pass its own tail, so it can fill the board. |
 | `replay.js` | Plays a replay back, with keyframes for stepping back and seeking. |
 | `game.js` | The game screen: pre-game, play, input, pause, game over, submit, sharing, replays. |
 | `render.js` | Draws the board on the canvas, in the theme's colours. |
@@ -64,8 +64,10 @@ the snake can never turn straight back into itself.
 
 **Autoplay**, on and off with `F2`, or three quick taps on the game's name on
 a touch screen. Not mentioned anywhere on screen. It steers at well over
-twice the speed a person could. A game it touched cannot go on the
-leaderboard; the mark is on the game, so the next one is clean.
+twice the speed a person could, and does not crash: it follows a loop through
+every cell of the board, cutting across it towards the fruit but never past
+its own tail, so it can fill the whole board. A game it touched cannot go on
+the leaderboard; the mark is on the game, so the next one is clean.
 
 **Levels and points.** A level every 5 fruits, after the start level. Each
 level is about 3.5% quicker, to a floor at level 30. A fruit is worth 10

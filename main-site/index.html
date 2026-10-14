@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <title>Snake Game | UwU Apps</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="Two games in one: classic Snake, and Slither, a big world of glowing dots.">
+    <meta name="description" content="Three games in one: classic Snake, Slither with glowing dots, and Snakes &amp; Ladders.">
 
     <script>
         (function () {
@@ -56,7 +56,7 @@
     <meta property="og:url" content="https://snek.uwuapps.org/" />
     <meta property="og:title" content="Snake Game | UwU Apps" />
     <meta property="og:site_name" content="UwU Apps" />
-    <meta property="og:description" content="Two games in one: classic Snake, and Slither, a big world of glowing dots." />
+    <meta property="og:description" content="Three games in one: classic Snake, Slither with glowing dots, and Snakes &amp; Ladders." />
 
     <!-- Jua is self-hosted, so the first offline visit has it too. -->
     <link rel="preload" href="/fonts/jua-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -81,6 +81,8 @@
         <canvas id="world" class="world" role="img" aria-label="The Slither world around your snake"></canvas>
         <canvas id="board" class="board" role="img" aria-label="The board: the snake, the fruit, and any walls"></canvas>
         <p id="stageNote" class="stage-note" role="status" aria-live="polite" hidden></p>
+        <!-- Snakes & Ladders board, shown only in that edition. -->
+        <canvas id="laddersBoard" class="ladders-board" role="img" aria-label="The Snakes and Ladders board" hidden></canvas>
     </main>
 
     <noscript>
@@ -181,6 +183,17 @@
                 </div>
                 <p id="applesNote" class="submit-note">Many starts with 3 on the board and adds one every level, up to 10.</p>
                 </div>
+                <div id="laddersPlayerBlock" class="level-block" hidden>
+                <p class="start-label">Players</p>
+                <div class="level-chips" role="group" aria-label="Player count">
+                    <button class="chip active" type="button" data-players="1" aria-pressed="true">Solo</button>
+                    <button class="chip" type="button" data-players="2" aria-pressed="false">2</button>
+                    <button class="chip" type="button" data-players="3" aria-pressed="false">3</button>
+                    <button class="chip" type="button" data-players="4" aria-pressed="false">4</button>
+                </div>
+                <input id="laddersPlayerCount" type="hidden" value="1">
+                <p id="laddersPlayerNote" class="submit-note">Solo adds 3 computer bots to play with you.</p>
+                </div>
                 <div id="skinRow" class="skin-row" hidden>
                     <p class="start-label">Your snake</p>
                     <button id="startSkinBtn" class="btn btn-quiet pill" type="button"><span data-icon="snake"></span>Skin and name</button>
@@ -210,6 +223,11 @@
                     to steer, <kbd>Space</kbd> to pause.</span>
                 <span class="touch-only">Swipe on the board to steer, or tap one of its edges.</span>
                 The edges wrap round to the other side.
+            </p>
+            <p id="laddersKeys" class="keys-legend" hidden>
+                <span class="kbd-only">Press <kbd>Space</kbd> or <kbd>Enter</kbd> to roll the dice on your turn.</span>
+                <span class="touch-only">Tap the Roll button or anywhere on the board to roll on your turn.</span>
+                Race to square 100. Ladders boost you up, snakes slide you down!
             </p>
             <a class="coffee-link" href="https://donate.stripe.com/28o2akeAr3hv0DK6oo" target="_blank" rel="noopener noreferrer">
                 <span data-icon="coffee"></span>Buy Augy a Coffee
@@ -336,6 +354,19 @@
                 <button id="sCopyLinkBtn" class="btn btn-quiet" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
             </div>
             <p class="submit-note">Slither stays off the leaderboard: its computer snakes and everyone in the world run on these devices, so no server can check it.</p>
+        </div>
+    </div>
+
+    <!-- Snakes & Ladders: game over -->
+    <div class="overlay hidden" id="laddersOver">
+        <div class="modal glass panel" role="dialog" aria-modal="true" aria-labelledby="laddersOverTitle">
+            <h2 id="laddersOverTitle">Game Over</h2>
+            <p id="laddersWinner" class="over-cause"></p>
+            <div id="laddersResults" class="final-stats"></div>
+            <div class="panel-actions">
+                <button id="laddersAgainBtn" class="btn btn-primary pill" type="button"><span data-icon="refresh"></span>Play again</button>
+                <button id="laddersLeaveBtn" class="btn btn-quiet pill" type="button"><span data-icon="home"></span>New game</button>
+            </div>
         </div>
     </div>
 

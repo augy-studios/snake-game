@@ -6,7 +6,6 @@ import { initLeaderboard, openLeaderboard } from "./leaderboard.js";
 import { initSettings, openSettings } from "./settings.js";
 import { initParty, openParty, partyHooks } from "./party.js";
 import { initSlither } from "./slither-game.js";
-import { initLadders } from "./ladders-game.js";
 import { cleanSlitherReplay } from "./slither-replay.js";
 import { api } from "./api.js";
 import { cleanReplay, unpackReplay } from "./replay-format.js";
@@ -137,7 +136,7 @@ function initFullscreen() {
   sync();
 }
 
-function wireModals(game, slither, ladders) {
+function wireModals(game, slither) {
   document.querySelectorAll("[data-close-modal]").forEach((btn) => {
     btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
   });
@@ -156,7 +155,6 @@ function wireModals(game, slither, ladders) {
   const pausing = (open) => () => {
     game.pause();
     slither.pause();
-    ladders.pause();
     open();
   };
   document.getElementById("themeBtn").addEventListener("click", pausing(() => openModal("themeModal")));
@@ -242,9 +240,7 @@ function boot() {
   const hooks = { ...partyHooks };
   const game = initGame(hooks);
   const slither = initSlither({ showStart: (opts) => game.showStart(opts) });
-  const ladders = initLadders({ showStart: (opts) => game.showStart(opts) });
   hooks.startSlither = (opts) => slither.start(opts);
-  hooks.startLadders = (opts) => ladders.start(opts);
   initLeaderboard({
     onWatch: (id) => {
       closeModal("boardModal");
@@ -252,7 +248,7 @@ function boot() {
     },
   });
   initParty(game, { onSlither: (guest, code, hello) => slither.joinWith(guest, code, hello) });
-  wireModals(game, slither, ladders);
+  wireModals(game, slither);
   openLink(game, slither);
   initUpdateBar();
 }

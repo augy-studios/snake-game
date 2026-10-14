@@ -38,7 +38,6 @@ import { escapeHtml, hydrateIcons, store } from "./ui.js";
 export const EDITIONS = [
   { id: "classic", name: "Classic", about: "The board wraps round at every edge." },
   { id: "slither", name: "Slither", about: "A big world of glowing dots. Anyone nearby can join any time." },
-  { id: "ladders", name: "Snakes & Ladders", about: "Roll the dice and race to 100. Watch out for snakes! 2–4 players." },
 ];
 const EDITION_KEY = "uwusnek.edition";
 
@@ -862,23 +861,14 @@ export function initGame(hooks = {}) {
       el.setAttribute("aria-checked", String(on));
     });
     const slither = edition === "slither";
-    const ladders = edition === "ladders";
-    $("levelBlock").hidden = slither || ladders;
+    $("levelBlock").hidden = slither;
     $("skinRow").hidden = !slither;
-    $("startTitle").textContent = ladders ? "Snakes & Ladders" : slither ? "Slither" : "Snake Game";
-    const isSolo = ($("laddersPlayerCount")?.value || "1") === "1";
-    $("startSummary").textContent = ladders
-      ? (isSolo ? "Solo vs 3 bots" : `${$("laddersPlayerCount")?.value || 2} players local`)
-      : slither
-        ? `${getSettings().graphics === "low" ? "Low" : "High"} quality graphics`
-        : describeSettings();
-    $("classicKeys").hidden = slither || ladders;
+    $("startTitle").textContent = slither ? "Slither" : "Snake Game";
+    $("startSummary").textContent = slither
+      ? `${getSettings().graphics === "low" ? "Low" : "High"} quality graphics`
+      : describeSettings();
+    $("classicKeys").hidden = slither;
     $("slitherKeys").hidden = !slither;
-    $("laddersKeys").hidden = !ladders;
-    $("laddersPlayerBlock").hidden = !ladders;
-    // Hide seed input for ladders (dice is random)
-    $("startSeed").parentElement.hidden = ladders;
-    $("startSettingsBtn").parentElement.hidden = ladders;
   }
 
   function syncLevelChips() {
@@ -903,12 +893,6 @@ export function initGame(hooks = {}) {
 
   function onStartSubmit(event) {
     event.preventDefault();
-    if (edition === "ladders") {
-      const players = Number($("laddersPlayerCount").value) || 1;
-      $("startOverlay").classList.add("hidden");
-      hooks.startLadders?.({ players, solo: players === 1 });
-      return;
-    }
     if (edition === "slither") {
       const seed = cleanSeed($("startSeed").value);
       $("startSeed").value = "";
@@ -1524,26 +1508,6 @@ export function initGame(hooks = {}) {
   $("appleChips").addEventListener("click", (e) => {
     const chip = e.target.closest("[data-apples]");
     if (chip) setAppleChips(chip.dataset.apples === "many");
-  });
-  $("laddersPlayerBlock").addEventListener("click", (e) => {
-    const chip = e.target.closest("[data-players]");
-    if (!chip) return;
-    $("laddersPlayerCount").value = chip.dataset.players;
-    document.querySelectorAll("#laddersPlayerBlock [data-players]").forEach((el) => {
-      const on = el.dataset.players === chip.dataset.players;
-      el.classList.toggle("active", on);
-      el.setAttribute("aria-pressed", String(on));
-    });
-    const isSolo = chip.dataset.players === "1";
-    const note = $("laddersPlayerNote");
-    if (note) {
-      note.textContent = isSolo
-        ? "Solo adds 3 computer bots to play with you."
-        : `${chip.dataset.players} players pass and play on this device.`;
-    }
-    if (edition === "ladders") {
-      $("startSummary").textContent = isSolo ? "Solo vs 3 bots" : `${chip.dataset.players} players local`;
-    }
   });
   $("startSettingsBtn").addEventListener("click", openSettings);
   $("editionList").addEventListener("click", (e) => {

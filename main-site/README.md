@@ -50,8 +50,11 @@ board takes as much of the screen as it can, clear of the stats top left and
 the tray on the right.
 
 **The pre-game screen** picks the start level (0 by default, 10, 20, 30 or any
-whole number up to 30) and, optionally, a seed. Higher levels move faster and
-score more. Difficulty and time limits are in Settings and shown on the screen.
+whole number up to 30), apples, and optionally a seed. Higher levels move
+faster and score more. Apples are one at a time (the default), or many: 3 on
+the board from the start, one more for every level gained, up to 10. Both
+are remembered for the next game, party games included. Difficulty and time
+limits are in Settings and shown on the screen.
 It has a picker for editions, hidden while there is only one: add an entry to
 `EDITIONS` in `js/game.js` and it appears.
 
@@ -84,6 +87,12 @@ points, times:
 A game time limit ends the game when it runs out. A fruit timer moves a
 fruit nobody reached in time, worth nothing; each fruit always gives at least
 the time to reach it by the shortest way, plus a second.
+
+With many apples there is no multiplier. Each fruit's shortest way is from
+where the head was when it appeared, so one left waiting while others are
+eaten is worth less by the time it is reached. Many-apple games go on the
+same leaderboard, needing `migrations/003`; a seed played with one apple and
+with many count as different settings.
 
 **Seeds.** A seed decides where every fruit lands, so the same seed and the
 same moves are always the same game. It shows on the pause and game over

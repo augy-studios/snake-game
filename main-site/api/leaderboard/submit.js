@@ -82,6 +82,7 @@ export default endpoint("POST", async ({ body }) => {
       p_start_level: replay.settings.start_level,
       p_game_seconds: replay.settings.game_seconds,
       p_fruit_seconds: replay.settings.fruit_seconds,
+      p_many_apples: replay.settings.many_apples,
       p_replay: replay,
       p_slack_ms: CLOCK_SLACK_MS,
       p_ttl_ms: RUN_TTL_MS,

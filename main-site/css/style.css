@@ -815,7 +815,8 @@ body.party-pause #pauseOverlay .solo-only { display: none; }
   width: 100%;
   text-align: left;
 }
-.start-label {
+.start-label,
+.panel p.start-label {
   font-size: 0.9rem;
   color: var(--ink);
   margin-top: 4px;
@@ -826,6 +827,8 @@ body.party-pause #pauseOverlay .solo-only { display: none; }
   align-items: center;
 }
 .level-chips { display: flex; gap: 6px; }
+.apple-chips { flex-wrap: wrap; }
+.apple-chips .chip { padding-inline: 14px; }
 .chip {
   min-width: 44px;
   padding: 9px 10px;

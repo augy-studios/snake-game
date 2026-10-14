@@ -10,7 +10,8 @@
 //   mode: "solo" | "coop" | "versus",
 //   grid: 40,
 //   seed: "K7QX2M",
-//   settings: { difficulty, start_level, game_seconds, fruit_seconds },
+//   settings: { difficulty, start_level, game_seconds, fruit_seconds, many_apples },
+//                                     many_apples missing in older replays: off
 //   players: ["Augy"],                one name per snake, in seat order
 //   ticks: 1834,                      moves the game lasted
 //   events: [[t, code, ...], ...]     js/rules.js's events, in tick order

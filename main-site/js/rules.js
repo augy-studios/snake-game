@@ -65,6 +65,22 @@ export function tickMs(difficulty, level, autoplay = false) {
 export const GAME_LIMITS = { 0: 1, 300: 1.1, 180: 1.25, 60: 1.5 };
 export const FRUIT_LIMITS = { 0: 1, 15: 1.15, 10: 1.3, 5: 1.5 };
 
+/* ---- Many apples ----
+   Off, there is one fruit on the board for each snake. On, there are
+   MANY_APPLES_START from the first move, one more for every level gained
+   since the start level, up to MANY_APPLES_MAX, and never fewer than one a
+   snake. Each is placed, scored and timed like any other. */
+
+export const MANY_APPLES_START = 3;
+export const MANY_APPLES_MAX = 10;
+
+function mainFruitCount(state) {
+  const snakes = state.snakes.length;
+  if (!state.settings.many_apples) return snakes;
+  const gained = Math.floor(state.eaten / FRUITS_PER_LEVEL);
+  return Math.max(snakes, Math.min(MANY_APPLES_MAX, MANY_APPLES_START + gained));
+}
+
 // Every fruit gives at least the time it takes to reach it by the shortest
 // way at the current speed, plus this.
 export const FRUIT_GRACE_MS = 1000;
@@ -132,6 +148,8 @@ export function cleanSettings(raw = {}) {
     start_level: Number.isFinite(level) ? Math.max(0, Math.min(MAX_START_LEVEL, level)) : 0,
     game_seconds: game in GAME_LIMITS ? game : 0,
     fruit_seconds: fruit in FRUIT_LIMITS ? fruit : 0,
+    // Off unless asked for, so games from before it existed play as they did.
+    many_apples: raw.many_apples === true,
   };
 }
 
@@ -211,7 +229,7 @@ export function newGame({ seed, mode = "solo", players = 1, settings, grid = GRI
     happened: [],
     incoming: [],
   };
-  for (let i = 0; i < count; i += 1) spawnFruit(state);
+  for (let i = mainFruitCount(state); i > 0; i -= 1) spawnFruit(state);
   return state;
 }
 
@@ -471,7 +489,7 @@ export function step(state) {
     return false;
   });
   const mains = state.fruits.filter((f) => !f.extra).length;
-  for (let k = mains; k < state.snakes.length; k += 1) spawnFruit(state);
+  for (let k = mains; k < mainFruitCount(state); k += 1) spawnFruit(state);
 
   const alive = state.snakes.filter((s) => s.alive);
   const limit = state.settings.game_seconds * 1000;

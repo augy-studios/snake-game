@@ -826,6 +826,7 @@ export function initGame(hooks = {}) {
     const s = getSettings();
     $("startLevel").value = String(s.start_level);
     syncLevelChips();
+    setAppleChips(s.many_apples);
     if (pick) setEdition(pick);
     else setEdition(edition);
     if (seed) $("startSeed").value = seed;
@@ -879,6 +880,17 @@ export function initGame(hooks = {}) {
     });
   }
 
+  // One apple at a time, or many; kept from game to game like the level.
+  function setAppleChips(many) {
+    document.querySelectorAll("#appleChips [data-apples]").forEach((el) => {
+      const on = (el.dataset.apples === "many") === many;
+      el.classList.toggle("active", on);
+      el.setAttribute("aria-pressed", String(on));
+    });
+  }
+
+  const pickedManyApples = () => $("appleChips").querySelector('[data-apples="many"]').classList.contains("active");
+
   function onStartSubmit(event) {
     event.preventDefault();
     if (edition === "slither") {
@@ -895,7 +907,7 @@ export function initGame(hooks = {}) {
       $("startLevel").focus();
       return;
     }
-    saveSettings({ start_level: level });
+    saveSettings({ start_level: level, many_apples: pickedManyApples() });
     const seed = cleanSeed($("startSeed").value);
     $("startSeed").value = "";
     startSolo({ seed: seed || makeSeed(), startLevel: level });
@@ -1493,6 +1505,10 @@ export function initGame(hooks = {}) {
     $("startLevel").value = chip.dataset.level;
     syncLevelChips();
   });
+  $("appleChips").addEventListener("click", (e) => {
+    const chip = e.target.closest("[data-apples]");
+    if (chip) setAppleChips(chip.dataset.apples === "many");
+  });
   $("startSettingsBtn").addEventListener("click", openSettings);
   $("editionList").addEventListener("click", (e) => {
     const card = e.target.closest("[data-edition]");
@@ -1522,7 +1538,8 @@ export function initGame(hooks = {}) {
     $("startSeed").value = r.seed;
     $("startLevel").value = String(r.settings.start_level);
     syncLevelChips();
-    $("startMsg").textContent = "The replay's seed is filled in. Your own difficulty and time limits apply.";
+    setAppleChips(r.settings.many_apples);
+    $("startMsg").textContent = "The replay's seed, level and apples are filled in. Your own difficulty and time limits apply.";
   });
   $("replaySpeed").addEventListener("click", (e) => {
     const btn = e.target.closest("[data-speed]");

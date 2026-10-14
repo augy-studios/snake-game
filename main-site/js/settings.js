@@ -17,6 +17,8 @@ const DEFAULTS = {
   start_level: 0,
   game_seconds: 0,
   fruit_seconds: 0,
+  // Picked on the pre-game screen, like the start level.
+  many_apples: false,
   // Slither's drawing: "high" or "low".
   graphics: "high",
 };
@@ -44,7 +46,7 @@ export function getSettings() {
   return { ...current };
 }
 
-// The four that change the game, in the form js/rules.js takes.
+// The ones that change the game, in the form js/rules.js takes.
 export function gameSettings() {
   return cleanSettings(getSettings());
 }

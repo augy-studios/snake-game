@@ -9,7 +9,10 @@
 
 import {
   GRID,
+  MANY_APPLES_MAX,
+  MANY_APPLES_START,
   applyEvent,
+  cleanSettings,
   currentTickMs,
   newGame,
   playThrough,
@@ -127,6 +130,26 @@ const [hx, hy] = p.snakes[0].body[0];
 check("a wall never lands next to a head", applyEvent(p, [0, 2, hx + 1, hy, 1]) === false);
 check("a wall never lands just ahead of a head", applyEvent(p, [0, 2, (hx + 5) % GRID, hy, 0]) === false);
 check("a wall lands further off", applyEvent(p, [0, 2, (hx + 10) % GRID, (hy + 5) % GRID, 0]) === true);
+
+console.log("Many apples");
+check("off unless asked for", cleanSettings({}).many_apples === false && cleanSettings({ many_apples: "yes" }).many_apples === false);
+check("one apple to start without it", newGame({ seed: "APPLES", settings }).fruits.length === 1);
+const many = { ...settings, many_apples: true };
+check("three to start with it", newGame({ seed: "APPLES", settings: many }).fruits.length === MANY_APPLES_START);
+check("co-op with four snakes has at least one each", newGame({ seed: "APPLES", mode: "coop", players: 4, settings: many }).fruits.length === 4);
+const ramp = botGame("RAMP", many, 60000);
+const mains = ramp.state.fruits.filter((f) => !f.extra).length;
+check(
+  "one more every level, up to the cap",
+  mains === Math.min(MANY_APPLES_MAX, MANY_APPLES_START + Math.floor(ramp.state.eaten / 5)),
+  `${mains} on the board after ${ramp.state.eaten} eaten`
+);
+check("the cap is reached", ramp.state.eaten >= 35 && mains === MANY_APPLES_MAX, `ate ${ramp.state.eaten}`);
+check("autoplay survives many apples", !ramp.state.over, `crashed after ${ramp.state.tick} moves`);
+const rampAgain = playThrough(cleanReplay(ramp.replay));
+check("a many-apple game replays the same", JSON.stringify(summary(rampAgain.state)) === JSON.stringify(summary(ramp.state)));
+check("an older replay, with no apples setting, is one apple", cleanReplay(a.replay).settings.many_apples === false);
+console.log(`        many apples: ${ramp.state.eaten} fruits in ${ramp.state.tick} moves, ${mains} on the board`);
 
 console.log("Replays");
 const auto = botGame("AUTO", settings, 400, true);

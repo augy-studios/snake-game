@@ -74,6 +74,7 @@ function unpackView(v) {
       start_level: num(v.settings?.start_level, 0, 99),
       game_seconds: num(v.settings?.game_seconds, 0, 3600),
       fruit_seconds: num(v.settings?.fruit_seconds, 0, 60),
+      many_apples: v.settings?.many_apples === true,
     },
     level: num(v.level, 0, 9999),
     timeMs: num(v.timeMs, 0, 1e9),

@@ -103,7 +103,7 @@ function boardBackdrop(size, grid, palette, dpr) {
 }
 
 // `motion`, when given, is one entry per snake for smooth movement between
-// moves: { t, dir, grows }, see bodyPath.
+// moves: { t, dir, grows }, see bodyPieces.
 export function drawBoard(ctx, size, view, palette, { dpr = 1, pulse = 0, hints = false, highlight = null, motion = null } = {}) {
   const { grid } = view;
   const cell = size / grid;
@@ -124,7 +124,7 @@ export function drawBoard(ctx, size, view, palette, { dpr = 1, pulse = 0, hints 
   }
 
   for (const f of view.fruits) drawFruit(ctx, f, cell, palette, view, pulse);
-  view.snakes.forEach((s, i) => drawSnake(ctx, s, cell, palette.snakes[i % 4], palette, view.snakes.length > 1, grid, motion?.[i]));
+  view.snakes.forEach((s, i) => drawSnake(ctx, s, i, cell, palette.snakes[i % 4], palette, view.snakes.length > 1, view, motion?.[i]));
 
   if (highlight) {
     // A watcher's aim: where the wall or fruit would land.
@@ -168,17 +168,12 @@ function drawFruit(ctx, f, cell, palette, view, pulse) {
   }
 }
 
-// The body as one unbroken path through the cell centres, in board units,
-// with wrapping undone: each point is moved by whole boards to sit next to
-// the one before it, so a snake crossing an edge is a straight line that
-// runs off the board. drawSnake draws it again shifted by a board wherever
-// it ran off, so it comes back on the other side.
-//
-// `motion` moves it on between moves: the head is `t` of the way into the
-// cell it is heading for, and the tail `t` of the way out of its cell
-// unless the snake is growing. Ahead of the game rather than behind it, so
-// smooth movement adds no lag; a turn bends the head the moment it is made.
-function bodyPath(s, grid, motion) {
+// The cell centres, in board units, with wrapping undone: each point is
+// moved by whole boards to sit next to the one before it, so a snake
+// crossing an edge is a line that runs off the board. drawSnake draws it
+// again shifted by a board wherever it ran off, so it comes back on the
+// other side.
+function centres(s, grid) {
   const pts = [];
   let px = 0;
   let py = 0;
@@ -193,24 +188,127 @@ function bodyPath(s, grid, motion) {
     px = ux;
     py = uy;
   });
-  const t = motion?.t ?? 0;
-  if (t > 0 && motion.dir >= 0) {
-    const [dx, dy] = DIRS[motion.dir];
-    pts.unshift([pts[0][0] + dx * t, pts[0][1] + dy * t]);
-    if (!motion.grows && pts.length > 2) {
-      const [tx, ty] = pts[pts.length - 1];
-      const [nx, ny] = pts[pts.length - 2];
-      pts[pts.length - 1] = [tx + (nx - tx) * t, ty + (ny - ty) * t];
-    }
-  }
   return pts;
 }
 
-function drawSnake(ctx, s, cell, color, palette, party, grid, motion) {
+/* ---- The body as a path ----
+   Each cell is a piece from the middle of the edge the snake came in by to
+   the middle of the edge it leaves by: straight across, or at a corner a
+   quarter circle round the corner of the cell the two edges share. So every
+   turn is a curve, and the pieces join end to end.
+
+   Between moves the head crosses its own cell, from the edge it came in by
+   (`t` = 0, just as the move before it ended) to the edge it leaves by
+   (`t` = 1), and the tail leaves its cell the same way unless the snake is
+   growing. The head's cell is the one place still to be decided, by the
+   move being made, which is always known: the game's own next move, a
+   replay's, or the turn queued next. So the head follows the curve as it
+   goes round, never past it, and a turn bends it the moment it is made. */
+
+const sameDir = (a, b) => a[0] === b[0] && a[1] === b[1];
+const towards = (from, to) => [Math.sign(to[0] - from[0]), Math.sign(to[1] - from[1])];
+
+// A cell's piece: through centre c, in by direction din, out by dout.
+function piece(c, din, dout) {
+  const from = [c[0] - din[0] / 2, c[1] - din[1] / 2];
+  const to = [c[0] + dout[0] / 2, c[1] + dout[1] / 2];
+  if (sameDir(din, dout)) return { from, to, dir: dout };
+  const corner = [c[0] + (dout[0] - din[0]) / 2, c[1] + (dout[1] - din[1]) / 2];
+  const a0 = Math.atan2(from[1] - corner[1], from[0] - corner[0]);
+  let turn = Math.atan2(to[1] - corner[1], to[0] - corner[0]) - a0;
+  if (turn > Math.PI) turn -= Math.PI * 2;
+  if (turn < -Math.PI) turn += Math.PI * 2;
+  return { from, to, corner, a0, turn };
+}
+
+// Where along a piece fraction f is, and which way it is heading there.
+function along(p, f) {
+  if (!p.corner) return { x: p.from[0] + (p.to[0] - p.from[0]) * f, y: p.from[1] + (p.to[1] - p.from[1]) * f, dx: p.dir[0], dy: p.dir[1] };
+  const a = p.a0 + p.turn * f;
+  const k = Math.sign(p.turn);
+  return { x: p.corner[0] + Math.cos(a) / 2, y: p.corner[1] + Math.sin(a) / 2, dx: -Math.sin(a) * k, dy: Math.cos(a) * k };
+}
+
+// Adds a piece from fraction f0 to f1 to the current path, shifted by
+// (ox, oy) boards' worth of units, at `cell` pixels a unit.
+function trace(ctx, p, f0, f1, ox, oy, cell) {
+  if (f1 <= f0) return;
+  if (!p.corner) {
+    const b = along(p, f1);
+    ctx.lineTo((b.x + ox) * cell, (b.y + oy) * cell);
+    return;
+  }
+  ctx.arc((p.corner[0] + ox) * cell, (p.corner[1] + oy) * cell, cell / 2, p.a0 + p.turn * f0, p.a0 + p.turn * f1, p.turn < 0);
+}
+
+// Which way each snake came into its tail cell. The body no longer holds
+// the cell the tail left, so it is remembered from the frame before: when
+// the tail has moved on one cell, it came from the cell the tail was in.
+// Unknown (a new game, a seek in a replay), the tail is drawn straight.
+const tailsSeen = [];
+
+function tailEntry(index, s, grid) {
+  const n = s.body.length;
+  const tail = s.body[n - 1];
+  const next = s.body[n - 2];
+  const seen = tailsSeen[index];
+  const same = (a, b) => a && b && a[0] === b[0] && a[1] === b[1];
+  let from = null;
+  if (seen && same(seen.tail, tail)) from = seen.from;
+  else if (seen && same(seen.next, tail)) from = seen.tail;
+  tailsSeen[index] = { tail, next, from };
+  if (!from) return null;
+  // From the cell before to the tail, across an edge if need be.
+  const step = (a, b) => {
+    const d = (((b - a) % grid) + grid) % grid;
+    return d === 1 ? 1 : d === grid - 1 ? -1 : 0;
+  };
+  const dir = [step(from[0], tail[0]), step(from[1], tail[1])];
+  const out = [step(tail[0], next[0]), step(tail[1], next[1])];
+  // Only a neighbour, and never doubling back.
+  if (Math.abs(dir[0]) + Math.abs(dir[1]) !== 1 || (dir[0] === -out[0] && dir[1] === -out[1])) return null;
+  return dir;
+}
+
+// The pieces from tail to head, how much of the tail's and the head's are
+// drawn, and where the head is. The tail piece is drawn from `tailFrom` on,
+// the head piece up to `headTo`; a snake of one cell is both at once.
+function bodyPieces(s, pts, view, motion, tailIn) {
+  const n = pts.length;
+  const alive = s.alive;
+  // Out, it stays as it was when it hit: all the way across, up against
+  // whatever it hit. Still in, as each move starts.
+  const m = motion ?? { t: alive ? 0 : 1, dir: s.dir, grows: !alive && s.grow > 0 };
+  const t = m.t;
+  // The way into each cell, from the cell behind it; the tail's, the way it
+  // came in if that is known, or else straight.
+  const din = pts.map((c, i) => (i < n - 1 ? towards(pts[i + 1], c) : null));
+  const back = (dir) => [-dir[0], -dir[1]];
+  let headOut = m.dir >= 0 ? DIRS[m.dir] : null;
+  if (n > 1 && (!headOut || sameDir(headOut, back(din[0])))) headOut = din[0];
+  if (n > 1) din[n - 1] = tailIn ?? towards(pts[n - 1], pts[n - 2]);
+  else din[0] = headOut;
+  if (!din[0]) return null; // one cell that has never moved: a dot
+
+  const pieces = pts.map((c, i) => piece(c, din[i], i > 0 ? towards(c, pts[i - 1]) : headOut));
+  let tailFrom = m.grows ? 0 : t;
+  let headTo = t;
+  // The cell the snake started in has no back half: it began in the middle.
+  // Its tail stays there until the head has moved a whole cell, and its
+  // very first move starts from there, at half the pace, so neither jumps.
+  if (view.tick !== undefined && n === view.tick + 1) tailFrom = Math.max(tailFrom, 0.5);
+  if (n === 1) headTo = 0.5 + t / 2;
+  return { pieces, tailFrom, headTo, head: along(pieces[0], headTo) };
+}
+
+function drawSnake(ctx, s, index, cell, color, palette, party, view, motion) {
   if (!s.body.length) return;
+  const { grid } = view;
   // Out, it fades into the board: an opaque mix, so nothing shows through.
   const fill = rgba(s.alive ? color : mix(color, palette.board, party ? 0.3 : 0.5));
-  const pts = bodyPath(s, grid, s.alive ? motion : null);
+  const pts = centres(s, grid);
+  const tailIn = s.body.length > 1 ? tailEntry(index, s, grid) : null;
+  const body = bodyPieces(s, pts, view, s.alive ? motion : null, tailIn);
   const width = cell * 0.78;
 
   // The copies needed to bring back whatever ran off an edge.
@@ -229,24 +327,36 @@ function drawSnake(ctx, s, cell, color, palette, party, grid, motion) {
   const shiftsY = [];
   for (let k = Math.floor((minY - 1) / grid); k <= Math.floor((maxY + 1) / grid); k += 1) shiftsY.push(-k * grid);
 
-  const head = pts[0];
-  const [dx, dy] = DIRS[motion?.dir >= 0 && s.alive ? motion.dir : s.dir >= 0 ? s.dir : 1];
+  // A snake that has never moved is a dot in the middle of its cell, looking
+  // right until it goes somewhere.
+  const resting = [1, 0];
+  const head = body ? body.head : { x: pts[0][0], y: pts[0][1], dx: resting[0], dy: resting[1] };
+  const n = pts.length;
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
+  ctx.lineWidth = width;
+  ctx.strokeStyle = fill;
+  ctx.fillStyle = fill;
   for (const ox of shiftsX) {
     for (const oy of shiftsY) {
-      ctx.beginPath();
-      if (pts.length === 1) {
-        ctx.arc((head[0] + ox) * cell, (head[1] + oy) * cell, width / 2, 0, Math.PI * 2);
-        ctx.fillStyle = fill;
-        ctx.fill();
-      } else {
-        pts.forEach(([x, y], i) => (i ? ctx.lineTo((x + ox) * cell, (y + oy) * cell) : ctx.moveTo((x + ox) * cell, (y + oy) * cell)));
-        ctx.lineWidth = width;
-        ctx.strokeStyle = fill;
+      if (body) {
+        const { pieces, tailFrom, headTo } = body;
+        const start = along(pieces[n - 1], tailFrom);
+        ctx.beginPath();
+        ctx.moveTo((start.x + ox) * cell, (start.y + oy) * cell);
+        if (n === 1) trace(ctx, pieces[0], tailFrom, headTo, ox, oy, cell);
+        else {
+          trace(ctx, pieces[n - 1], tailFrom, 1, ox, oy, cell);
+          for (let i = n - 2; i >= 1; i -= 1) trace(ctx, pieces[i], 0, 1, ox, oy, cell);
+          trace(ctx, pieces[0], 0, headTo, ox, oy, cell);
+        }
         ctx.stroke();
       }
-      drawEyes(ctx, (head[0] + ox) * cell, (head[1] + oy) * cell, dx, dy, cell, palette, s.alive);
+      // The head as a disc as well, so a body with no length yet still shows.
+      ctx.beginPath();
+      ctx.arc((head.x + ox) * cell, (head.y + oy) * cell, width / 2, 0, Math.PI * 2);
+      ctx.fill();
+      drawEyes(ctx, (head.x + ox) * cell, (head.y + oy) * cell, head.dx, head.dy, cell, palette, s.alive);
     }
   }
 }

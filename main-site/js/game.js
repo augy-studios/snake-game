@@ -271,6 +271,16 @@ export function initGame(hooks = {}) {
 
   const unit = (v) => Math.max(0, Math.min(1, v));
 
+  // Autoplay's choice for the coming move, worked out once per move: the
+  // drawing needs it as the move starts, so the head curves into the turn
+  // rather than gliding on and jumping across, and takeInputs plays the
+  // same one when the move is due. Anything applied in between forgets it.
+  function botPlan(s) {
+    const st = s.state;
+    if (s.botPlan?.tick !== st.tick) s.botPlan = { tick: st.tick, dir: botMove(st, 0) };
+    return s.botPlan.dir;
+  }
+
   function wouldTake(snake, dir) {
     if (dir === snake.dir) return false;
     return !(snake.moved >= 0 && snake.body.length > 1 && (dir + 2) % 4 === snake.moved);
@@ -294,7 +304,13 @@ export function initGame(hooks = {}) {
       const st = s.state;
       if (s.paused || !st.started || s.countdownUntil) return null;
       t = s.acc / currentTickMs(st);
-      nextDir = (snake, i) => (s.autoplay ? snake.dir : (s.queues[i] ?? []).find((d) => wouldTake(snake, d)) ?? snake.dir);
+      nextDir = (snake, i) => {
+        if (s.autoplay) {
+          const dir = botPlan(s);
+          return dir >= 0 && wouldTake(snake, dir) ? dir : snake.dir;
+        }
+        return (s.queues[i] ?? []).find((d) => wouldTake(snake, d)) ?? snake.dir;
+      };
     } else if (s.kind === "replay") {
       if (!s.playing) return null;
       const p = s.player;
@@ -492,6 +508,7 @@ export function initGame(hooks = {}) {
     const record = (e) => {
       if (!applyEvent(st, e)) return false;
       s.events.push(e);
+      s.botPlan = null;
       return true;
     };
     if (s.wantAutoplay !== null) {
@@ -503,7 +520,7 @@ export function initGame(hooks = {}) {
       while (q.length) if (record([t, 0, seat, q.shift()])) break;
     });
     if (s.autoplay) {
-      const dir = botMove(st, 0);
+      const dir = botPlan(s);
       if (dir >= 0 && dir !== st.snakes[0].dir) record([t, 0, 0, dir]);
     }
     for (const p of s.places.splice(0)) {

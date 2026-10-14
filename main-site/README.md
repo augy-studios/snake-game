@@ -236,10 +236,15 @@ connection is back. `/join` and `/r/<id>` are rewrites to the game page, in
 top of the page offers Reload or Not now, and nothing reloads until the
 player asks. Bump `VERSION` in `sw.js` on every change to anything here.
 
-**Smooth movement:** between moves each snake glides into the cell it is
-heading for, drawn as one rounded body that runs off one edge and back on
-the other. It runs ahead of the game rather than behind it, so it adds no
-delay: a turn bends the head the moment it is pressed.
+**Smooth movement:** each cell of a snake is drawn from the edge it came in
+by to the edge it leaves by, straight across or round a quarter circle, so
+the body is one rounded path that curves at every turn and runs off one
+edge and back on the other. Between moves the head crosses its own cell
+along that path, its eyes turning with it, and the tail leaves its cell the
+same way. The way out of the head's cell is the move being made, always
+known in time (the turn queued next, autoplay's choice worked out as the
+move starts, or a replay's), so the head curves into a turn rather than
+running on and jumping across, and a turn bends it the moment it is pressed.
 
 **Lag:** the board is redrawn only while something moves or animates, from a backdrop cached once per size and theme. Layout is worked
 out on resize, not every frame. Autoplay's search reuses its buffers. Party

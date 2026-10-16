@@ -6,6 +6,7 @@ import { initLeaderboard, openLeaderboard } from "./leaderboard.js";
 import { initSettings, openSettings } from "./settings.js";
 import { initParty, openParty, partyHooks } from "./party.js";
 import { initSlither } from "./slither-game.js";
+import { initLadders } from "./ladders-game.js";
 import { cleanSlitherReplay } from "./slither-replay.js";
 import { api } from "./api.js";
 import { cleanReplay, unpackReplay } from "./replay-format.js";
@@ -136,7 +137,7 @@ function initFullscreen() {
   sync();
 }
 
-function wireModals(game, slither) {
+function wireModals(game, slither, ladders) {
   document.querySelectorAll("[data-close-modal]").forEach((btn) => {
     btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
   });
@@ -155,14 +156,22 @@ function wireModals(game, slither) {
   const pausing = (open) => () => {
     game.pause();
     slither.pause();
+    ladders.pause();
     open();
   };
   document.getElementById("themeBtn").addEventListener("click", pausing(() => openModal("themeModal")));
   document.getElementById("boardBtn").addEventListener("click", pausing(() => openLeaderboard()));
   document.getElementById("settingsBtn").addEventListener("click", pausing(openSettings));
   // In a Slither world, the people button shows that world's join code.
-  document.getElementById("partyBtn").addEventListener("click", () => (slither.inWorld ? slither.openWorld() : openParty()));
+  document.getElementById("partyBtn").addEventListener("click", () => {
+    if (slither.inWorld) return slither.openWorld();
+    // A party game started from here takes over from Snakes & Ladders.
+    ladders.pause();
+    openParty();
+  });
   document.getElementById("startPartyBtn").addEventListener("click", () => openParty());
+  // Snakes & Ladders' games are hosted from Play; this only joins one.
+  document.getElementById("lJoinBtn").addEventListener("click", () => openParty({ joinOnly: true }));
 }
 
 /* Links that open something: /join?id=CODE from a party's QR code,
@@ -240,15 +249,27 @@ function boot() {
   const hooks = { ...partyHooks };
   const game = initGame(hooks);
   const slither = initSlither({ showStart: (opts) => game.showStart(opts) });
+  const ladders = initLadders({ showStart: (opts) => game.showStart(opts) });
   hooks.startSlither = (opts) => slither.start(opts);
+  hooks.startLadders = () => ladders.play();
+  hooks.onEdition = (id) => ladders.setPicked(id === "ladders");
+  // Classic taking the screen, for a game or a replay, ends one.
+  hooks.onClassic = () => ladders.close();
   initLeaderboard({
     onWatch: (id) => {
       closeModal("boardModal");
+      ladders.close();
       watchStored(game, slither, id);
     },
   });
-  initParty(game, { onSlither: (guest, code, hello) => slither.joinWith(guest, code, hello) });
-  wireModals(game, slither);
+  initParty(game, {
+    onSlither: (guest, code, hello) => {
+      ladders.close();
+      slither.joinWith(guest, code, hello);
+    },
+    onLadders: (guest, code, hello) => ladders.joinWith(guest, code, hello),
+  });
+  wireModals(game, slither, ladders);
   openLink(game, slither);
   initUpdateBar();
 }

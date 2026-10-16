@@ -39,6 +39,7 @@ export function readPalette() {
   const page = mix(brand, token("--bg"), 0.1);
   const strong = over(token("--surface-strong"), page);
   return {
+    brand,
     page,
     strong,
     board: mix(token("--ink"), strong, 0.04),

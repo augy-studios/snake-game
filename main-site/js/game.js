@@ -38,6 +38,7 @@ import { escapeHtml, hydrateIcons, store } from "./ui.js";
 export const EDITIONS = [
   { id: "classic", name: "Classic", about: "The board wraps round at every edge." },
   { id: "slither", name: "Slither", about: "A big world of glowing dots. Anyone nearby can join any time." },
+  { id: "ladders", name: "Snakes & Ladders", about: "Roll the die and race to 100, up ladders and down snakes." },
 ];
 const EDITION_KEY = "uwusnek.edition";
 
@@ -72,6 +73,9 @@ const clock = (ms) => {
 };
 
 const isTouch = () => window.matchMedia("(pointer: coarse)").matches || (navigator.maxTouchPoints || 0) > 0;
+
+// Slither and Snakes & Ladders take the keys and the screen for themselves.
+const otherEdition = () => document.body.classList.contains("slither") || document.body.classList.contains("ladders");
 
 export function initGame(hooks = {}) {
   const $ = (id) => document.getElementById(id);
@@ -169,7 +173,9 @@ export function initGame(hooks = {}) {
 
     let bottom = pad + safe.bottom;
     if (!replayBar.hidden) bottom = Math.max(bottom, vh - replayBar.getBoundingClientRect().top + gap);
-    if (!$("toolDock").hidden) bottom = Math.max(bottom, vh - $("toolDock").getBoundingClientRect().top + gap);
+    for (const id of ["toolDock", "laddersDock"]) {
+      if (!$(id).hidden) bottom = Math.max(bottom, vh - $(id).getBoundingClientRect().top + gap);
+    }
     const floor = vh - bottom;
 
     const hud = $("hudLeft").getBoundingClientRect();
@@ -228,12 +234,15 @@ export function initGame(hooks = {}) {
 
     const size = Math.max(GRID * 4, Math.floor(best.size));
     const topY = best.y;
-    Object.assign(canvas.style, {
-      left: `${Math.round(best.left)}px`,
-      top: `${Math.round(topY)}px`,
-      width: `${size}px`,
-      height: `${size}px`,
-    });
+    // Snakes & Ladders' board goes in the same place (js/ladders-game.js).
+    for (const el of [canvas, $("laddersBoard")]) {
+      Object.assign(el.style, {
+        left: `${Math.round(best.left)}px`,
+        top: `${Math.round(topY)}px`,
+        width: `${size}px`,
+        height: `${size}px`,
+      });
+    }
     dirty = true;
   }
 
@@ -420,6 +429,7 @@ export function initGame(hooks = {}) {
 
   // A game alone on this device. `autoplay` starts it with the bot steering.
   function startSolo({ seed = makeSeed(), startLevel = getSettings().start_level, autoplay = false } = {}) {
+    hooks.onClassic?.();
     stopReplayView();
     gameNumber += 1;
     const settings = { ...gameSettings(), start_level: startLevel };
@@ -455,6 +465,7 @@ export function initGame(hooks = {}) {
   // A party game this device hosts. `seats` names each snake in seat order;
   // `mySeat` is the host's own snake, or null when the host is watching.
   function startHost({ seed = makeSeed(), mode, seats, mySeat, onTick, onEnd }) {
+    hooks.onClassic?.();
     stopReplayView();
     gameNumber += 1;
     const state = newGame({ seed, mode, players: seats.length, settings: gameSettings() });
@@ -610,7 +621,7 @@ export function initGame(hooks = {}) {
      not the browser, carries the mark, so the next game is clean. */
 
   function toggleAutoplay() {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     const s = session;
     if (s?.kind === "local" && !s.party && !s.state.over) {
       s.wantAutoplay = !(s.wantAutoplay ?? s.autoplay);
@@ -626,7 +637,7 @@ export function initGame(hooks = {}) {
   let taps = 0;
   let lastTapAt = 0;
   function onBrandTap(e) {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     if (e.pointerType !== "touch") return;
     e.preventDefault();
     const now = performance.now();
@@ -674,7 +685,7 @@ export function initGame(hooks = {}) {
   // the page; touch-action in style.css keeps the browser's gestures out.
   let gesture = null;
   function onPointerDown(e) {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     if (!session || session.kind === "replay") return;
     if (watching()) {
       aim = cellAt(e.clientX, e.clientY);
@@ -688,7 +699,7 @@ export function initGame(hooks = {}) {
   }
 
   function onPointerMove(e) {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     if (watching()) {
       const next = cellAt(e.clientX, e.clientY);
       if (next?.x !== aim?.x || next?.y !== aim?.y) {
@@ -708,7 +719,7 @@ export function initGame(hooks = {}) {
   }
 
   function onPointerUp(e) {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     if (watching()) {
       const cell = cellAt(e.clientX, e.clientY);
       if (cell) placeTool(cell.x, cell.y);
@@ -851,7 +862,8 @@ export function initGame(hooks = {}) {
   }
 
   // The pre-game screen shows what the picked edition takes: a start level
-  // for Classic, a skin for Slither.
+  // for Classic, a skin for Slither, the players and rules for Snakes &
+  // Ladders, which has no seed or settings and its own way to play with others.
   function setEdition(id, { save = true } = {}) {
     edition = EDITIONS.some((e) => e.id === id) ? id : "classic";
     if (save) store.set(EDITION_KEY, edition);
@@ -861,14 +873,22 @@ export function initGame(hooks = {}) {
       el.setAttribute("aria-checked", String(on));
     });
     const slither = edition === "slither";
-    $("levelBlock").hidden = slither;
+    const ladders = edition === "ladders";
+    $("levelBlock").hidden = slither || ladders;
     $("skinRow").hidden = !slither;
-    $("startTitle").textContent = slither ? "Slither" : "Snake Game";
+    $("laddersBlock").hidden = !ladders;
+    $("seedBlock").hidden = ladders;
+    $("summaryLine").hidden = ladders;
+    $("startPartyBtn").hidden = ladders;
+    $("lJoinBtn").hidden = !ladders;
+    $("startTitle").textContent = ladders ? "Snakes & Ladders" : slither ? "Slither" : "Snake Game";
     $("startSummary").textContent = slither
       ? `${getSettings().graphics === "low" ? "Low" : "High"} quality graphics`
       : describeSettings();
-    $("classicKeys").hidden = slither;
+    $("classicKeys").hidden = slither || ladders;
     $("slitherKeys").hidden = !slither;
+    $("laddersKeys").hidden = !ladders;
+    hooks.onEdition?.(edition);
   }
 
   function syncLevelChips() {
@@ -893,6 +913,11 @@ export function initGame(hooks = {}) {
 
   function onStartSubmit(event) {
     event.preventDefault();
+    if (edition === "ladders") {
+      $("startOverlay").classList.add("hidden");
+      hooks.startLadders?.();
+      return;
+    }
     if (edition === "slither") {
       const seed = cleanSeed($("startSeed").value);
       $("startSeed").value = "";
@@ -1083,6 +1108,7 @@ export function initGame(hooks = {}) {
       console.warn("replay did not play:", err);
       return false;
     }
+    hooks.onClassic?.();
     pauseAll();
     if (session?.kind !== "replay") returnTo = { session, over: !$("gameOverOverlay").classList.contains("hidden"), start: !$("startOverlay").classList.contains("hidden") };
     hideOverlays();
@@ -1279,7 +1305,7 @@ export function initGame(hooks = {}) {
   /* ---- Keys ---- */
 
   function onKeyDown(e) {
-    if (document.body.classList.contains("slither")) return;
+    if (otherEdition()) return;
     if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
     // A window is open: Esc that closed it closes only that.
     if (e.defaultPrevented || document.body.classList.contains("modal-open")) return;
@@ -1375,6 +1401,7 @@ export function initGame(hooks = {}) {
 
   // A party game another device hosts.
   function startRemote({ seats, mySeat, watching: watch, send }) {
+    hooks.onClassic?.();
     stopReplayView();
     gameNumber += 1;
     remote = {
@@ -1433,7 +1460,7 @@ export function initGame(hooks = {}) {
   window.visualViewport?.addEventListener("resize", queueLayout);
   if ("ResizeObserver" in window) {
     const ro = new ResizeObserver(queueLayout);
-    for (const id of ["hudLeft", "replayBar", "toolDock"]) ro.observe($(id));
+    for (const id of ["hudLeft", "replayBar", "toolDock", "laddersDock"]) ro.observe($(id));
   }
   // The tray's open state and the update bar both move the board.
   new MutationObserver(queueLayout).observe($("tray"), { attributes: true, attributeFilter: ["class"] });

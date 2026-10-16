@@ -5,7 +5,7 @@
     <meta charset="utf-8">
     <title>Snake Game | UwU Apps</title>
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="description" content="Two games in one: classic Snake, and Slither, a big world of glowing dots.">
+    <meta name="description" content="Three games in one: classic Snake, Slither, a big world of glowing dots, and Snakes &amp; Ladders.">
 
     <script>
         (function () {
@@ -56,7 +56,7 @@
     <meta property="og:url" content="https://snek.uwuapps.org/" />
     <meta property="og:title" content="Snake Game | UwU Apps" />
     <meta property="og:site_name" content="UwU Apps" />
-    <meta property="og:description" content="Two games in one: classic Snake, and Slither, a big world of glowing dots." />
+    <meta property="og:description" content="Three games in one: classic Snake, Slither, a big world of glowing dots, and Snakes &amp; Ladders." />
 
     <!-- Jua is self-hosted, so the first offline visit has it too. -->
     <link rel="preload" href="/fonts/jua-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -80,6 +80,8 @@
         <!-- Slither's world, the whole screen, shown only in that edition. -->
         <canvas id="world" class="world" role="img" aria-label="The Slither world around your snake"></canvas>
         <canvas id="board" class="board" role="img" aria-label="The board: the snake, the fruit, and any walls"></canvas>
+        <!-- Snakes & Ladders' board, in the same place as Classic's. -->
+        <canvas id="laddersBoard" class="board ladders-board" role="img" aria-label="The Snakes and Ladders board, squares 1 to 100"></canvas>
         <p id="stageNote" class="stage-note" role="status" aria-live="polite" hidden></p>
     </main>
 
@@ -100,6 +102,9 @@
                 <span data-icon="users"></span><span>Join</span><b id="joinCodeText">...</b><span id="joinCount" class="join-count"></span>
             </button>
             <div id="slitherStats" class="hud-stats" role="group" aria-label="Your length and the biggest snakes"></div>
+        </div>
+        <div id="laddersHud" class="hud-stats" hidden>
+            <ul id="laddersPlayers" class="hud-players" aria-label="The players and their squares"></ul>
         </div>
     </header>
 
@@ -152,6 +157,12 @@
         </button>
     </section>
 
+    <!-- Snakes & Ladders: the die, and what just happened. -->
+    <section id="laddersDock" class="ladders-dock glass" aria-label="Die" hidden>
+        <button id="laddersDie" class="ladders-die" type="button" aria-label="Roll the die" aria-keyshortcuts="Space Enter R"></button>
+        <p id="laddersStatus" class="ladders-status" role="status" aria-live="polite"></p>
+    </section>
+
     <!-- The pre-game screen. Overlays use their own class, not
          .modal-backdrop, so ui.js never counts them as an open window. -->
     <div class="overlay hidden" id="startOverlay">
@@ -181,22 +192,49 @@
                 </div>
                 <p id="applesNote" class="submit-note">Many starts with 3 on the board and adds one every level, up to 10.</p>
                 </div>
+                <div id="laddersBlock" class="ladders-block" hidden>
+                    <p id="lPlayersLabel" class="start-label">Players</p>
+                    <div id="lPlayerChips" class="level-chips apple-chips" role="group" aria-labelledby="lPlayersLabel" aria-describedby="lPlayersNote">
+                        <button class="chip" type="button" data-players="1" aria-pressed="true">Solo</button>
+                        <button class="chip" type="button" data-players="2" aria-pressed="false">2</button>
+                        <button class="chip" type="button" data-players="3" aria-pressed="false">3</button>
+                        <button class="chip" type="button" data-players="4" aria-pressed="false">4</button>
+                    </div>
+                    <div id="lBotsBlock" class="ladders-block">
+                        <p id="lBotsLabel" class="start-label">Computers to play</p>
+                        <div id="lBotChips" class="level-chips" role="group" aria-labelledby="lBotsLabel">
+                            <button class="chip" type="button" data-computers="1" aria-pressed="true">1</button>
+                            <button class="chip" type="button" data-computers="2" aria-pressed="false">2</button>
+                            <button class="chip" type="button" data-computers="3" aria-pressed="false">3</button>
+                        </div>
+                    </div>
+                    <p id="lPlayersNote" class="submit-note"></p>
+                    <p id="lRulesLabel" class="start-label">Rules</p>
+                    <div id="lRuleChips" class="level-chips apple-chips" role="group" aria-labelledby="lRulesLabel" aria-describedby="lRulesNote">
+                        <button class="chip" type="button" data-rule="sixAgain" aria-pressed="true">A 6 rolls again</button>
+                        <button class="chip" type="button" data-rule="bounce" aria-pressed="false">Bounce back off 100</button>
+                    </div>
+                    <p id="lRulesNote" class="submit-note"></p>
+                </div>
                 <div id="skinRow" class="skin-row" hidden>
                     <p class="start-label">Your snake</p>
                     <button id="startSkinBtn" class="btn btn-quiet pill" type="button"><span data-icon="snake"></span>Skin and name</button>
                 </div>
 
-                <label class="start-label" for="startSeed">Seed</label>
-                <input id="startSeed" class="field seed-input" type="text" placeholder="Random, or paste one" maxlength="24"
-                    autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+                <div id="seedBlock" class="seed-block">
+                    <label class="start-label" for="startSeed">Seed</label>
+                    <input id="startSeed" class="field seed-input" type="text" placeholder="Random, or paste one" maxlength="24"
+                        autocapitalize="characters" spellcheck="false" enterkeyhint="go">
+                </div>
 
-                <p class="start-summary"><span id="startSummary"></span>
+                <p id="summaryLine" class="start-summary"><span id="startSummary"></span>
                     <button id="startSettingsBtn" class="link-btn" type="button">Change</button></p>
                 <p id="startMsg" class="submit-msg" role="status" aria-live="polite"></p>
 
                 <div class="panel-actions">
                     <button id="playBtn" class="btn btn-primary pill big" type="submit"><span data-icon="play"></span>Play</button>
                     <button id="startPartyBtn" class="btn btn-quiet pill big" type="button"><span data-icon="users"></span>Play with others</button>
+                    <button id="lJoinBtn" class="btn btn-quiet pill big" type="button" hidden><span data-icon="users"></span>Join a game</button>
                 </div>
             </form>
             <p id="slitherKeys" class="keys-legend" hidden>
@@ -204,6 +242,11 @@
                     <kbd>&larr;</kbd> <kbd>&rarr;</kbd> steer too.</span>
                 <span class="touch-only">Your snake heads for your finger. Hold Boost, or a second finger, to speed up.</span>
                 Boosting costs length. Cut others off and they turn into big dots.
+            </p>
+            <p id="laddersKeys" class="keys-legend" hidden>
+                <span class="kbd-only"><kbd>Space</kbd> or <kbd>Enter</kbd> rolls the die on your turn, or click the board. <kbd>Esc</kbd> pauses.</span>
+                <span class="touch-only">On your turn, tap the die or anywhere on the board to roll.</span>
+                Ladders take you up, snakes take you down. First to 100 wins.
             </p>
             <p id="classicKeys" class="keys-legend">
                 <span class="kbd-only"><kbd>&uarr;</kbd> <kbd>&darr;</kbd> <kbd>&larr;</kbd> <kbd>&rarr;</kbd> or <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd>
@@ -232,7 +275,14 @@
                 <button id="pauseNewBtn" class="btn btn-quiet pill solo-only" type="button">
                     <span data-icon="home"></span>New game
                 </button>
+                <button id="lRestartBtn" class="btn btn-quiet pill ladders-only" type="button">
+                    <span data-icon="refresh"></span>Start over
+                </button>
+                <button id="lQuitBtn" class="btn btn-quiet pill ladders-only" type="button">
+                    <span data-icon="home"></span>New game
+                </button>
             </div>
+            <p id="lOnlineNote" class="hidden">Others are in this game, so it carries on.</p>
             <p class="seed-line">
                 Seed <code class="seed-code"></code>
                 <button class="btn btn-quiet pill" type="button" data-copy-seed><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
@@ -336,6 +386,47 @@
                 <button id="sCopyLinkBtn" class="btn btn-quiet" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
             </div>
             <p class="submit-note">Slither stays off the leaderboard: its computer snakes and everyone in the world run on these devices, so no server can check it.</p>
+        </div>
+    </div>
+
+    <!-- Snakes & Ladders: someone reached 100. -->
+    <div class="overlay hidden" id="laddersOver">
+        <div class="modal glass panel" role="dialog" aria-modal="true" aria-labelledby="lOverTitle">
+            <h2 id="lOverTitle">You win!</h2>
+            <p id="lOverCause" class="over-cause"></p>
+            <ol id="lResults" class="party-results" aria-label="Where everyone finished"></ol>
+            <div class="panel-actions">
+                <button id="lAgainBtn" class="btn btn-primary pill" type="button"><span data-icon="refresh"></span>Play again</button>
+                <button id="lLeaveBtn" class="btn btn-quiet pill" type="button"><span data-icon="home"></span>New game</button>
+            </div>
+            <p id="lGuestNote" class="submit-note hidden">The host can start another game with everyone.</p>
+            <p class="submit-note">Snakes &amp; Ladders stays off the leaderboard: it is all down to the die.</p>
+        </div>
+    </div>
+
+    <!-- Snakes & Ladders with others: the join code, who is in, and Start. -->
+    <div class="overlay hidden" id="laddersLobby">
+        <div class="modal glass panel lobby-panel" role="dialog" aria-modal="true" aria-labelledby="lLobbyTitle">
+            <h2 id="lLobbyTitle">Waiting for players</h2>
+            <div id="lLobbyInvite" class="lobby-invite">
+                <p class="party-code" id="lLobbyCode" aria-label="Join code"></p>
+                <div id="lLobbyQr" class="party-qr"></div>
+                <p id="lLobbyLinkRow" class="party-link">
+                    <span id="lLobbyLink"></span>
+                    <button id="lLobbyCopy" class="btn btn-quiet pill" type="button"><span data-icon="copy"></span><span class="copy-label">Copy</span></button>
+                </p>
+                <p class="submit-note">
+                    Everyone has to be on the same network: the same wifi, or a hotspot on one device that the others join.
+                    They pick Snakes &amp; Ladders, then Join a game and this code, or open the link or the QR code.
+                </p>
+            </div>
+            <ul id="lLobbySeats" class="party-people lobby-seats" aria-label="Seats"></ul>
+            <p id="lLobbyRules" class="submit-note"></p>
+            <p id="lLobbyStatus" role="status" aria-live="polite"></p>
+            <div class="panel-actions">
+                <button id="lLobbyStart" class="btn btn-primary pill" type="button"><span data-icon="play"></span><span id="lLobbyStartLabel">Start</span></button>
+                <button id="lLobbyLeave" class="btn btn-quiet pill" type="button"><span data-icon="home"></span><span id="lLobbyLeaveLabel">Cancel</span></button>
+            </div>
         </div>
     </div>
 
@@ -476,13 +567,17 @@
             </div>
 
             <section id="partyChoose" class="party-view">
-                <p class="mode-note">
+                <p id="partyJoinNote" class="mode-note" hidden>
+                    Type the code on the host's screen, or open their link or QR code. Everyone has to be on the same
+                    network: the same wifi, or a hotspot on one device that the others join.
+                </p>
+                <p id="partyIntro" class="mode-note">
                     Everyone has to be on the same network: the same wifi, or a hotspot on one device that the others join.
                     Up to four play, together or against each other, and anyone else watches and can drop walls in the way
                     or extra fruit.
                 </p>
                 <button id="hostBtn" class="btn btn-primary pill big" type="button"><span data-icon="users"></span>Host a game</button>
-                <p class="modal-section-label">Or join one</p>
+                <p id="partyOrJoin" class="modal-section-label">Or join one</p>
                 <form id="joinForm" class="guess" autocomplete="off">
                     <label for="joinCode" class="visually-hidden">Party code</label>
                     <input id="joinCode" class="field code-input" type="text" placeholder="Code" maxlength="8"

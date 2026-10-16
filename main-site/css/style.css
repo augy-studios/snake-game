@@ -851,7 +851,7 @@ body.party-pause #pauseOverlay .solo-only { display: none; }
 /* The editions, once there is more than one. */
 .edition-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
   width: 100%;
 }
@@ -1207,6 +1207,104 @@ body.replaying .boost-btn { display: none; }
 .mode-toggle.outfits .mode-btn { font-size: 0.8rem; padding: 7px 4px; }
 .skin-row { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .skin-row[hidden], .level-block[hidden] { display: none; }
+
+/* ---- Snakes & Ladders ----
+   Its board takes Classic's place, behind the pre-game screen while it is
+   picked and through a game; js/ladders-render.js draws it in the theme's
+   colours. The die sits at the foot of the screen with a note beside it. */
+
+.ladders-board { display: none; touch-action: manipulation; }
+body.ladders-view .ladders-board { display: block; }
+body.ladders-view .board:not(.ladders-board) { display: none; }
+body.ladders #hudStats,
+body.ladders .tool-dock,
+body.ladders #stageNote { display: none !important; }
+/* Pause in Snakes & Ladders: continue, start over or a new game; no seed. */
+body.ladders #pauseOverlay .solo-only,
+body.ladders #pauseOverlay .seed-line,
+body:not(.ladders) #pauseOverlay .ladders-only { display: none; }
+
+#laddersHud[hidden] { display: none; }
+#laddersHud li.turn { color: var(--brand-ink); }
+
+.ladders-dock {
+  --die: var(--snake-1);
+  position: fixed;
+  z-index: 6;
+  left: 50%;
+  bottom: max(10px, calc(env(safe-area-inset-bottom) + 10px));
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: max-content;
+  max-width: calc(100vw - 20px);
+  padding: 6px 18px 6px 6px;
+  border-radius: 999px;
+  background: var(--glass-read);
+}
+.ladders-dock[hidden] { display: none; }
+.ladders-status {
+  min-width: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  line-height: 1.25;
+}
+
+/* The die, ringed in the colour of whoever is rolling. */
+.ladders-die {
+  flex-shrink: 0;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  touch-action: manipulation;
+}
+.ladders-die svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.ladders-die .die-face {
+  fill: color-mix(in srgb, var(--die) 16%, var(--bg));
+  stroke: var(--die);
+  stroke-width: 3;
+}
+.ladders-die circle { fill: var(--ink); }
+.ladders-die[aria-disabled="true"] { cursor: default; }
+.ladders-die[aria-disabled="true"]:not(.rolling) svg { opacity: 0.75; }
+.ladders-die.ready svg { animation: die-nudge 1.4s ease-in-out infinite; }
+.ladders-die.rolling svg { animation: die-tumble 0.28s linear infinite; }
+@keyframes die-nudge {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  50% { transform: scale(1.07) rotate(-6deg); }
+}
+@keyframes die-tumble {
+  from { transform: rotate(0deg) scale(0.92); }
+  to { transform: rotate(360deg) scale(0.92); }
+}
+
+/* Who plays, on the pre-game screen. */
+.ladders-block,
+.seed-block { display: flex; flex-direction: column; gap: 8px; }
+.ladders-block[hidden],
+.seed-block[hidden],
+.start-summary[hidden],
+#startPartyBtn[hidden],
+#lJoinBtn[hidden],
+#hostBtn[hidden] { display: none; }
+.chip:disabled { opacity: 0.4; }
+
+/* The lobby, for a game with others. */
+.lobby-panel { max-width: 440px; }
+.lobby-panel .party-qr { width: min(170px, 50vw); }
+.lobby-invite { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.lobby-invite[hidden],
+#lLobbyLinkRow[hidden] { display: none; }
+.lobby-seats { width: 100%; }
+.lobby-seats .pp-name { display: inline-flex; align-items: center; gap: 6px; }
+#lLobbyStatus:empty { display: none; }
+
+.pr-place {
+  width: 1.2em;
+  color: var(--muted-strong);
+  font-variant-numeric: tabular-nums;
+}
 
 /* ---- Update bar ----
    Per update-bar-spec.md: quieter than the controls, full width, tinted

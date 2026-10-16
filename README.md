@@ -1,6 +1,6 @@
 # Snake Game
 
-Two editions, picked on the pre-game screen:
+Three editions, picked on the pre-game screen:
 
 - **Classic:** Snake with edges that wrap around. Grow long, climb the
   levels, add your game to the leaderboard, and play with friends on the
@@ -8,8 +8,12 @@ Two editions, picked on the pre-game screen:
 - **Slither:** a big round world of glowing dots and computer snakes, after
   slither.io. Steer by pointer or finger, boost to cut others off, and anyone
   on the same network can drop in with the join code at any time.
+- **Snakes & Ladders:** the board game. Roll the die and race to 100, up
+  ladders and down snakes. Solo is against the computer; with two to four
+  players, people on the same network join with a code and computers take
+  any seats left empty. The board is drawn in the theme's colours.
 
-Both play offline, with a keyboard or by touch on a phone.
+All three play offline, with a keyboard or by touch on a phone.
 
 Live at <https://snek.uwuapps.org>.
 
@@ -61,6 +65,7 @@ The specs at the root are what this is built to:
 ```
 node scripts/test-rules.mjs
 node scripts/test-slither.mjs
+node scripts/test-ladders.mjs
 node scripts/check-sw.mjs
 node scripts/check-precache.mjs
 node scripts/check-theme.mjs
@@ -73,6 +78,10 @@ link depend on. Run it after any change to `js/rules.js`, `js/bot.js`,
 Slither: the same world from the same inputs, a world restored from a
 snapshot carrying on identically, and a tick fast enough. Run it after any
 change to `js/slither-rules.js`, and bump `RULES_VERSION` there.
+`test-ladders.mjs` checks Snakes & Ladders' board and rules and plays a
+thousand games with a seeded die; run it after any change to
+`js/ladders-rules.js`, and bump `RULES_VERSION` there: every device in a
+game plays the host's rolls out with its own copy of the rules.
 `bench-autoplay.mjs` is not a check: it compares Slither's autoplay with the
 computer's steering, for after changing `js/slither-autoplay.js`. A change
 to either edition's rules also

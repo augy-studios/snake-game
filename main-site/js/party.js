@@ -29,8 +29,10 @@ const PING_MS = 1000;
 const $ = (id) => document.getElementById(id);
 
 let game = null;
-// Hands a connection over to Slither when the host turns out to be a world.
+// Hands a connection over to Slither when the host turns out to be a world,
+// or to Snakes & Ladders when it is one of those games.
 let onSlither = null;
+let onLadders = null;
 
 /* ---- Snapshots ----
    The board in as few bytes as JSON allows: bodies as flat coordinate
@@ -493,12 +495,13 @@ function onHostMessage(message) {
   switch (message.type) {
     case "edition":
       // The code is a Slither world's: it takes this connection from here.
-      if (message.edition === "slither" && onSlither) {
+      const take = message.edition === "slither" ? onSlither : message.edition === "ladders" ? onLadders : null;
+      if (take) {
         const guest = joining.guest;
         clearInterval(joining.pinger);
         joining.guest = null;
         store.set(LAST_KEY, joining.code);
-        onSlither(guest, joining.code, message);
+        take(guest, joining.code, message);
       }
       break;
     case "state":
@@ -628,8 +631,14 @@ function showView(which) {
   $("partyGuest").hidden = which !== "guest";
 }
 
-export function openParty({ code = "" } = {}) {
+// `joinOnly` from Snakes & Ladders' Join a game: hosting from here would
+// start a Classic party, so only the code is asked for.
+export function openParty({ code = "", joinOnly = false } = {}) {
   game.pause();
+  $("hostBtn").hidden = joinOnly;
+  $("partyIntro").hidden = joinOnly;
+  $("partyOrJoin").hidden = joinOnly;
+  $("partyJoinNote").hidden = !joinOnly;
   if (hosting.host) {
     renderHost();
     showView("host");
@@ -641,11 +650,13 @@ export function openParty({ code = "" } = {}) {
     $("joinCode").value = code || store.get(LAST_KEY) || "";
   }
   openModal("partyModal");
+  if (joinOnly && !$("partyChoose").hidden) $("joinCode").focus();
 }
 
 export function initParty(controller, hooks = {}) {
   game = controller;
   onSlither = hooks.onSlither ?? null;
+  onLadders = hooks.onLadders ?? null;
   $("hostBtn").addEventListener("click", startHosting);
   $("joinForm").addEventListener("submit", (e) => {
     e.preventDefault();

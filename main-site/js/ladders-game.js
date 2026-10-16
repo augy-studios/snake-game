@@ -199,6 +199,12 @@ export function initLadders({ showStart }) {
       el.classList.toggle("active", on);
       el.setAttribute("aria-pressed", String(on));
     });
+    // The rules are switches, each lit while it is on.
+    document.querySelectorAll("#lRuleChips [data-rule]").forEach((el) => {
+      const on = Boolean(s[el.dataset.rule]);
+      el.classList.toggle("active", on);
+      el.setAttribute("aria-pressed", String(on));
+    });
     $("lBotsBlock").hidden = s.players > 1;
     $("lPlayersNote").textContent =
       s.players === 1

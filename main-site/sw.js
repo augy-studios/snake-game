@@ -35,7 +35,7 @@
 // 5. PeerJS, for party games, comes from cdnjs and is never cached:
 //    pairing needs the network anyway (STUN-p2p-spec.md).
 
-const VERSION = "uwusnek-v13";
+const VERSION = "uwusnek-v14";
 
 const SHELL = `uwusnek-shell-${VERSION}`;
 
